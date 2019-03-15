@@ -1967,7 +1967,7 @@ class GeneralUtility
         $fI = pathinfo($filepath);
         $fI['dirname'] .= '/';
         // Check parts:
-        if (!static::validPathStr($filepath) || !$fI['basename'] || strlen($fI['basename']) >= 60) {
+        if (!static::validPathStr($filepath) || !$fI['basename'] || strlen($fI['basename']) >= 255) {
             return 'Input filepath "' . $filepath . '" was generally invalid!';
         }
 
