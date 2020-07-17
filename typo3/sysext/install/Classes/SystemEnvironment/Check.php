@@ -63,7 +63,6 @@ class Check implements CheckInterface
         'hash',
         'json',
         'mysqli',
-        'openssl',
         'session',
         'SPL',
         'standard',
@@ -77,7 +76,8 @@ class Check implements CheckInterface
      */
     protected $suggestedPhpExtensions = [
         'fileinfo' => 'This extension is used for proper file type detection in the File Abstraction Layer.',
-        'intl' => 'This extension is used for correct language and locale handling.'
+        'intl' => 'This extension is used for correct language and locale handling.',
+        'openssl' => 'This extension is used for sending SMTP mails over an encrypted channel endpoint, and for extensions such as "rsaauth".'
     ];
 
     /**
@@ -99,7 +99,6 @@ class Check implements CheckInterface
         $this->checkDocRoot();
         $this->checkOpenBaseDir();
         $this->checkXdebugMaxNestingLevel();
-        $this->checkOpenSslInstalled();
 
         $this->checkMaxInputVars();
         $this->checkReflectionDocComment();
@@ -190,10 +189,15 @@ class Check implements CheckInterface
                 'Maximum size for POST requests is smaller than maximum upload filesize in PHP',
                 FlashMessage::ERROR
             ));
+        } elseif ($maximumPostSize === $maximumUploadFilesize) {
+            $this->messageQueue->enqueue(new FlashMessage(
+                'The maximum size for file uploads is set to ' . ini_get('upload_max_filesize'),
+                'Maximum post upload size correlates with maximum upload file size in PHP'
+            ));
         } else {
             $this->messageQueue->enqueue(new FlashMessage(
-                'The maximum size for file uploads is actually set to ' . ini_get('upload_max_filesize'),
-                'Maximum post upload size correlates with maximum upload file size in PHP'
+                'The maximum size for file uploads is set to ' . ini_get('upload_max_filesize'),
+                'Maximum post upload size is higher than maximum upload file size in PHP, which is fine.'
             ));
         }
     }
@@ -519,38 +523,6 @@ class Check implements CheckInterface
     }
 
     /**
-     * Check accessibility and functionality of OpenSSL
-     */
-    protected function checkOpenSslInstalled()
-    {
-        if (extension_loaded('openssl')) {
-            $testKey = @openssl_pkey_new();
-            if (is_resource($testKey)) {
-                openssl_free_key($testKey);
-                $this->messageQueue->enqueue(new FlashMessage(
-                    '',
-                    'PHP OpenSSL extension installed properly'
-                ));
-            } else {
-                $this->messageQueue->enqueue(new FlashMessage(
-                    'Something went wrong while trying to create a new private key for testing.'
-                        . ' Please check the integration of the PHP OpenSSL extension and if it is installed correctly.',
-                    'PHP OpenSSL extension not working',
-                    FlashMessage::ERROR
-                ));
-            }
-        } else {
-            $this->messageQueue->enqueue(new FlashMessage(
-                'OpenSSL is a PHP extension to encrypt/decrypt data between requests.'
-                    . ' TYPO3 CMS requires it to be able to encrypt stored passwords to improve the security in the'
-                    . ' database layer.',
-                'PHP OpenSSL extension not loaded',
-                FlashMessage::ERROR
-            ));
-        }
-    }
-
-    /**
      * Get max_input_vars status
      */
     protected function checkMaxInputVars()
@@ -737,7 +709,7 @@ class Check implements CheckInterface
     }
 
     /**
-     * Check jgp support of GD library
+     * Check jpg support of GD library
      */
     protected function checkGdLibJpgSupport()
     {

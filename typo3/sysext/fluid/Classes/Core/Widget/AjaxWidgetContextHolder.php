@@ -14,6 +14,10 @@ namespace TYPO3\CMS\Fluid\Core\Widget;
  * The TYPO3 project - inspiring people to share!
  */
 
+use TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Extbase\Security\Cryptography\HashService;
+use TYPO3\CMS\Frontend\Controller\TypoScriptFrontendController;
+
 /**
  * This object stores the WidgetContext for the currently active widgets
  * of the current user, to make sure the WidgetContext is available in
@@ -27,7 +31,7 @@ class AjaxWidgetContextHolder implements \TYPO3\CMS\Core\SingletonInterface
      * An array $ajaxWidgetIdentifier => $widgetContext
      * which stores the widget context.
      *
-     * @var array
+     * @var WidgetContext[]
      */
     protected $widgetContexts = [];
 
@@ -37,10 +41,16 @@ class AjaxWidgetContextHolder implements \TYPO3\CMS\Core\SingletonInterface
     protected $widgetContextsStorageKey = 'TYPO3\\CMS\\Fluid\\Core\\Widget\\AjaxWidgetContextHolder_widgetContexts';
 
     /**
+     * @var HashService
+     */
+    protected $hashService;
+
+    /**
      * Constructor
      */
     public function __construct()
     {
+        $this->hashService = GeneralUtility::makeInstance(HashService::class);
         $this->loadWidgetContexts();
     }
 
@@ -49,10 +59,10 @@ class AjaxWidgetContextHolder implements \TYPO3\CMS\Core\SingletonInterface
      */
     protected function loadWidgetContexts()
     {
-        if (TYPO3_MODE === 'FE') {
-            $this->widgetContexts = unserialize($GLOBALS['TSFE']->fe_user->getKey('ses', $this->widgetContextsStorageKey));
+        if (isset($GLOBALS['TSFE']) && $GLOBALS['TSFE'] instanceof TypoScriptFrontendController) {
+            $this->widgetContexts = $this->unserializeWithHmac($GLOBALS['TSFE']->fe_user->getKey('ses', $this->widgetContextsStorageKey));
         } else {
-            $this->widgetContexts = isset($GLOBALS['BE_USER']->uc[$this->widgetContextsStorageKey]) ? unserialize($GLOBALS['BE_USER']->uc[$this->widgetContextsStorageKey]) : [];
+            $this->widgetContexts = isset($GLOBALS['BE_USER']->uc[$this->widgetContextsStorageKey]) ? $this->unserializeWithHmac($GLOBALS['BE_USER']->uc[$this->widgetContextsStorageKey]) : [];
             $GLOBALS['BE_USER']->writeUC();
         }
     }
@@ -61,7 +71,7 @@ class AjaxWidgetContextHolder implements \TYPO3\CMS\Core\SingletonInterface
      * Get the widget context for the given $ajaxWidgetId.
      *
      * @param string $ajaxWidgetId
-     * @return \TYPO3\CMS\Fluid\Core\Widget\WidgetContext
+     * @return WidgetContext
      */
     public function get($ajaxWidgetId)
     {
@@ -75,9 +85,9 @@ class AjaxWidgetContextHolder implements \TYPO3\CMS\Core\SingletonInterface
      * Stores the WidgetContext inside the Context, and sets the
      * AjaxWidgetIdentifier inside the Widget Context correctly.
      *
-     * @param \TYPO3\CMS\Fluid\Core\Widget\WidgetContext $widgetContext
+     * @param WidgetContext $widgetContext
      */
-    public function store(\TYPO3\CMS\Fluid\Core\Widget\WidgetContext $widgetContext)
+    public function store(WidgetContext $widgetContext)
     {
         $ajaxWidgetId = md5(uniqid(mt_rand(), true));
         $widgetContext->setAjaxWidgetIdentifier($ajaxWidgetId);
@@ -90,12 +100,34 @@ class AjaxWidgetContextHolder implements \TYPO3\CMS\Core\SingletonInterface
      */
     protected function storeWidgetContexts()
     {
-        if (TYPO3_MODE === 'FE') {
-            $GLOBALS['TSFE']->fe_user->setKey('ses', $this->widgetContextsStorageKey, serialize($this->widgetContexts));
+        if (isset($GLOBALS['TSFE']) && $GLOBALS['TSFE'] instanceof TypoScriptFrontendController) {
+            $GLOBALS['TSFE']->fe_user->setKey('ses', $this->widgetContextsStorageKey, $this->serializeWithHmac($this->widgetContexts));
             $GLOBALS['TSFE']->fe_user->storeSessionData();
         } else {
-            $GLOBALS['BE_USER']->uc[$this->widgetContextsStorageKey] = serialize($this->widgetContexts);
+            $GLOBALS['BE_USER']->uc[$this->widgetContextsStorageKey] = $this->serializeWithHmac($this->widgetContexts);
             $GLOBALS['BE_USER']->writeUc();
+        }
+    }
+
+    protected function serializeWithHmac(array $widgetContexts): string
+    {
+        $data = serialize($widgetContexts);
+        return $this->hashService->appendHmac($data);
+    }
+
+    protected function unserializeWithHmac(?string $data): array
+    {
+        if ($data === null || $data === '') {
+            return [];
+        }
+        try {
+            $data = $this->hashService->validateAndStripHmac($data);
+            // widget contexts literally can contain everything, that why using
+            // HMAC-signed `unserialize()` is the only option here unless Extbase
+            // structures have been refactored further
+            $widgetContexts = unserialize($data);
+        } finally {
+            return is_array($widgetContexts ?? null) ? $widgetContexts : [];
         }
     }
 }

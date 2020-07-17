@@ -80,4 +80,113 @@
         <doktype>254</doktype>
         <deleted>0</deleted>
     </pages>
+    <pages>
+        <uid>12</uid>
+        <pid>1</pid>
+        <title>Complete Entry</title>
+        <tstamp>1491811200</tstamp>
+        <slug>/complete-entry</slug>
+        <deleted>0</deleted>
+    </pages>
+    <pages>
+        <uid>13</uid>
+        <pid>1</pid>
+        <title>Only changefreq</title>
+        <tstamp>1491811200</tstamp>
+        <slug>/only-changefreq</slug>
+        <deleted>0</deleted>
+    </pages>
+    <pages>
+        <uid>14</uid>
+        <pid>1</pid>
+        <title>Clean</title>
+        <tstamp>1491811200</tstamp>
+        <slug>/clean</slug>
+        <deleted>0</deleted>
+    </pages>
+    <pages>
+        <uid>15</uid>
+        <pid>1</pid>
+        <title>Canonicalized page</title>
+        <tstamp>1566474847</tstamp>
+        <slug>/canonicalized-page</slug>
+        <deleted>0</deleted>
+        <canonical_link>https://www.typo3.org</canonical_link>
+    </pages>
+    <pages>
+        <uid>16</uid>
+        <pid>1</pid>
+        <title>Hidden in Default</title>
+        <slug>/hidden-in-default</slug>
+        <deleted>0</deleted>
+        <l18n_cfg>1</l18n_cfg>
+    </pages>
+    <pages>
+        <uid>17</uid>
+        <pid>1</pid>
+        <title>No Index</title>
+        <slug>/no-index</slug>
+        <deleted>0</deleted>
+        <no_index>1</no_index>
+    </pages>
+    <pages>
+        <uid>100</uid>
+        <pid>0</pid>
+        <title>Root FR</title>
+        <is_siteroot>1</is_siteroot>
+        <slug>/</slug>
+        <deleted>0</deleted>
+        <sys_language_uid>1</sys_language_uid>
+        <l10n_parent>1</l10n_parent>
+    </pages>
+    <pages>
+        <uid>102</uid>
+        <pid>1</pid>
+        <title>Dummy 1-2 fr</title>
+        <tstamp>1491811200</tstamp>
+        <slug>/dummy-1-2-fr</slug>
+        <deleted>0</deleted>
+        <sys_language_uid>1</sys_language_uid>
+        <l10n_parent>2</l10n_parent>
+    </pages>
+    <pages>
+        <uid>103</uid>
+        <pid>1</pid>
+        <title>Dummy 1-3 fr</title>
+        <SYS_LASTCHANGED>1535657401</SYS_LASTCHANGED>
+        <slug>/dummy-1-3-fr</slug>
+        <deleted>0</deleted>
+        <sys_language_uid>1</sys_language_uid>
+        <l10n_parent>3</l10n_parent>
+    </pages>
+    <pages>
+        <uid>105</uid>
+        <pid>2</pid>
+        <title>Dummy 1-2-5 fr</title>
+        <slug>/dummy-1-2-5-fr</slug>
+        <deleted>0</deleted>
+        <sys_language_uid>1</sys_language_uid>
+        <l10n_parent>5</l10n_parent>
+        <l18n_cfg>2</l18n_cfg>
+    </pages>
+    <pages>
+        <uid>200</uid>
+        <pid>0</pid>
+        <title>Root DE</title>
+        <is_siteroot>1</is_siteroot>
+        <slug>/</slug>
+        <deleted>0</deleted>
+        <sys_language_uid>2</sys_language_uid>
+        <l10n_parent>1</l10n_parent>
+    </pages>
+    <pages>
+        <uid>204</uid>
+        <pid>1</pid>
+        <title>Dummy 1-4 de</title>
+        <tstamp>1491811200</tstamp>
+        <slug>/dummy-1-4-de</slug>
+        <deleted>0</deleted>
+        <sys_language_uid>2</sys_language_uid>
+        <l10n_parent>4</l10n_parent>
+    </pages>
 </dataset>

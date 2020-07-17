@@ -126,6 +126,7 @@ class DocumentationFile
         $entry['version'] = PathUtility::basename(PathUtility::dirname($file));
         $entry['headline'] = $headline;
         $entry['filepath'] = $file;
+        $entry['filename'] = pathinfo($file)['filename'];
         $entry['tags'] = $this->extractTags($lines);
         $entry['class'] = 'default';
         foreach ($entry['tags'] as $key => $tag) {
@@ -139,6 +140,17 @@ class DocumentationFile
         $entry['content'] = file_get_contents($file);
         $entry['parsedContent'] = $this->parseContent($entry['content']);
         $entry['file_hash'] = md5($entry['content']);
+        if ($entry['version'] !== '') {
+            $entry['url']['documentation'] = sprintf(
+                'https://docs.typo3.org/c/typo3/cms-core/master/en-us/Changelog/%s/%s.html',
+                $entry['version'],
+                $entry['filename']
+            );
+        }
+        $issueId = $this->parseIssueId($entry['filename']);
+        if ($issueId) {
+            $entry['url']['issue'] = sprintf('https://forge.typo3.org/issues/%s', $issueId);
+        }
 
         return [md5($file) => $entry];
     }
@@ -319,12 +331,22 @@ class DocumentationFile
     protected function parseContent(string $rstContent): string
     {
         $content = htmlspecialchars($rstContent);
-        $content = preg_replace('/:issue:`([\d]*)`/', '<a href="https://forge.typo3.org/issues/\\1" target="_blank">\\1</a>', $content);
-        $content = preg_replace('/#([\d]*)/', '#<a href="https://forge.typo3.org/issues/\\1" target="_blank">\\1</a>', $content);
+        $content = preg_replace('/:issue:`([\d]*)`/', '<a href="https://forge.typo3.org/issues/\\1" target="_blank" rel="noopener noreferrer">\\1</a>', $content);
+        $content = preg_replace('/#([\d]*)/', '#<a href="https://forge.typo3.org/issues/\\1" target="_blank" rel="noopener noreferrer">\\1</a>', $content);
         $content = preg_replace('/(\n([=]*)\n(.*)\n([=]*)\n)/', '', $content, 1);
         $content = preg_replace('/.. index::(.*)/', '', $content);
         $content = preg_replace('/.. include::(.*)/', '', $content);
         return trim($content);
+    }
+
+    /**
+     * @param string $filename
+     *
+     * @return string|null
+     */
+    protected function parseIssueId(string $filename): ?string
+    {
+        return GeneralUtility::trimExplode('-', $filename)[1] ?? null;
     }
 
     /**
@@ -335,6 +357,7 @@ class DocumentationFile
         $finder = new Finder();
         $finder
             ->depth(0)
+            ->sortByName()
             ->name('/^(Feature|Breaking|Deprecation|Important)\-\d+.+\.rst$/i');
 
         return $finder;

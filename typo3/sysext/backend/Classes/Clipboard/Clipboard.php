@@ -20,6 +20,7 @@ use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
 use TYPO3\CMS\Core\Imaging\Icon;
 use TYPO3\CMS\Core\Imaging\IconFactory;
+use TYPO3\CMS\Core\Resource\AbstractFile;
 use TYPO3\CMS\Core\Resource\ResourceFactory;
 use TYPO3\CMS\Core\Type\Bitmask\JsConfirmation;
 use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
@@ -182,7 +183,7 @@ class Clipboard
         }
         // Set copy mode of the tab
         if (isset($cmd['setCopyMode'])) {
-            $this->clipData[$this->current]['mode'] = $this->isElements() ? ($cmd['setCopyMode'] ? 'copy' : '') : '';
+            $this->clipData[$this->current]['mode'] = $cmd['setCopyMode'] ? 'copy' : '';
             $this->changed = 1;
         }
     }
@@ -336,7 +337,7 @@ class Clipboard
             'id' => 'normal',
             'number' => 0,
             'url' => GeneralUtility::linkThisScript(['CB' => ['setP' => 'normal']]),
-            'description' => 'normal-description',
+            'description' => 'labels.normal-description',
             'label' => 'labels.normal',
             'padding' => $this->padTitle('normal')
         ];
@@ -349,7 +350,7 @@ class Clipboard
                 'id' => 'tab_' . $a,
                 'number' => $a,
                 'url' => GeneralUtility::linkThisScript(['CB' => ['setP' => 'tab_' . $a]]),
-                'description' => 'cliptabs-description',
+                'description' => 'labels.cliptabs-description',
                 'label' => 'labels.cliptabs-name',
                 'padding' => $this->padTitle('tab_' . $a)
             ];
@@ -764,8 +765,9 @@ class Clipboard
                     list($table, $uid) = explode('|', $k);
                     // Rendering files/directories on the clipboard
                     if ($table === '_FILE') {
-                        if (file_exists($v) && GeneralUtility::isAllowedAbsPath($v)) {
-                            $params['tx_impexp'][is_dir($v) ? 'dir' : 'file'][] = $v;
+                        $file = ResourceFactory::getInstance()->getObjectFromCombinedIdentifier($v);
+                        if ($file instanceof AbstractFile) {
+                            $params['tx_impexp']['record'][] = 'sys_file:' . $file->getUid();
                         }
                     } else {
                         // Rendering records:

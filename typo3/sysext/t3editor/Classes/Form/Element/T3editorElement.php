@@ -100,7 +100,7 @@ class T3editorElement extends AbstractFormElement
         $this->resultArray['stylesheetFiles'][] = $codeMirrorPath . '/lib/codemirror.css';
         $this->resultArray['stylesheetFiles'][] = $this->extPath . '/Resources/Public/Css/t3editor.css';
         $this->resultArray['requireJsModules'][] = [
-            'TYPO3/CMS/T3editor/T3editor' => 'function(T3editor) {T3editor.findAndInitializeEditors()}'
+            'TYPO3/CMS/T3editor/T3editor' => 'function(T3editor) {T3editor.observeEditorCandidates()}'
         ];
 
         // Compile and register t3editor configuration
@@ -115,18 +115,16 @@ class T3editorElement extends AbstractFormElement
 
         $parameterArray = $this->data['parameterArray'];
 
-        $rows = MathUtility::forceIntegerInRange($parameterArray['fieldConf']['config']['rows'] ?: 10, 1, 40);
-
         $attributes = [];
-        $attributes['rows'] = $rows;
+        if (isset($parameterArray['fieldConf']['config']['rows']) && MathUtility::canBeInterpretedAsInteger($parameterArray['fieldConf']['config']['rows'])) {
+            $attributes['rows'] = $parameterArray['fieldConf']['config']['rows'];
+        }
+
         $attributes['wrap'] = 'off';
         $attributes['style'] = 'width:100%;';
         $attributes['onchange'] = GeneralUtility::quoteJSvalue($parameterArray['fieldChangeFunc']['TBE_EDITOR_fieldChanged']);
 
-        $attributeString = '';
-        foreach ($attributes as $param => $value) {
-            $attributeString .= $param . '="' . htmlspecialchars((string)$value) . '" ';
-        }
+        $attributeString = GeneralUtility::implodeAttributes($attributes, true);
 
         $editorHtml = $this->getHTMLCodeForEditor(
             $parameterArray['itemFormElName'],

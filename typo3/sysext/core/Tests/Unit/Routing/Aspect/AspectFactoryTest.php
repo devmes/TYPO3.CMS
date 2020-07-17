@@ -16,10 +16,13 @@ namespace TYPO3\CMS\Core\Tests\Unit\Routing\Enhancer;
  * The TYPO3 project - inspiring people to share!
  */
 
+use PHPUnit\Framework\MockObject\MockObject;
 use Prophecy\Prophecy\ObjectProphecy;
+use TYPO3\CMS\Core\Context\Context;
 use TYPO3\CMS\Core\Routing\Aspect\AspectFactory;
 use TYPO3\CMS\Core\Routing\Aspect\AspectInterface;
 use TYPO3\CMS\Core\Routing\Aspect\PersistedMappableAspectInterface;
+use TYPO3\CMS\Core\Site\Entity\Site;
 use TYPO3\CMS\Core\Site\Entity\SiteLanguage;
 use TYPO3\TestingFramework\Core\Unit\UnitTestCase;
 
@@ -34,6 +37,11 @@ class AspectFactoryTest extends UnitTestCase
      * @var SiteLanguage|ObjectProphecy
      */
     protected $languageProphecy;
+
+    /**
+     * @var Site|ObjectProphecy
+     */
+    protected $siteProphecy;
 
     /**
      * @var string
@@ -51,6 +59,9 @@ class AspectFactoryTest extends UnitTestCase
         $this->languageProphecy = $this->prophesize(
             SiteLanguage::class
         );
+        $this->siteProphecy = $this->prophesize(
+            Site::class
+        );
         $this->persistedMockClass = $this->getMockClass(
             PersistedMappableAspectInterface::class
         );
@@ -61,12 +72,16 @@ class AspectFactoryTest extends UnitTestCase
             'Persisted' => $this->persistedMockClass,
             'Aspect' => $this->aspectMockClass,
         ];
-        $this->subject = new AspectFactory();
+        /** @var Context|MockObject $contextMock */
+        $contextMock = $this->getMockBuilder(Context::class)
+            ->disableOriginalConstructor()
+            ->getMock();
+        $this->subject = new AspectFactory($contextMock);
     }
 
     protected function tearDown()
     {
-        unset($this->subject, $this->languageProphecy);
+        unset($this->subject, $this->languageProphecy, $this->persistedMockClass, $this->aspectMockClass);
         parent::tearDown();
     }
 
@@ -79,7 +94,8 @@ class AspectFactoryTest extends UnitTestCase
         $this->expectExceptionCode(1538079481);
         $this->subject->createAspects(
             ['a' => []],
-            $this->languageProphecy->reveal()
+            $this->languageProphecy->reveal(),
+            $this->siteProphecy->reveal()
         );
     }
 
@@ -92,7 +108,8 @@ class AspectFactoryTest extends UnitTestCase
         $this->expectExceptionCode(1538079482);
         $this->subject->createAspects(
             ['a' => ['type' => 'Undefined']],
-            $this->languageProphecy->reveal()
+            $this->languageProphecy->reveal(),
+            $this->siteProphecy->reveal()
         );
     }
 
@@ -170,7 +187,8 @@ class AspectFactoryTest extends UnitTestCase
     {
         $aspects = $this->subject->createAspects(
             $settings,
-            $this->languageProphecy->reveal()
+            $this->languageProphecy->reveal(),
+            $this->siteProphecy->reveal()
         );
         static::assertSame(array_keys($aspects), array_keys($expectation));
         array_walk($aspects, function ($aspect, $key) use ($expectation) {

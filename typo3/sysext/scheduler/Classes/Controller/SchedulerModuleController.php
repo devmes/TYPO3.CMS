@@ -200,7 +200,7 @@ class SchedulerModuleController
         $content .= $this->getModuleContent($previousCMD);
         $content .= '<div id="extraFieldsSection"></div></form><div id="extraFieldsHidden"></div>';
 
-        $this->getButtons();
+        $this->getButtons($request);
         $this->getModuleMenu();
 
         $this->moduleTemplate->setContent($content);
@@ -303,15 +303,13 @@ class SchedulerModuleController
                             // Try adding or editing
                             $content .= $this->editTaskAction();
                             $sectionTitle = $this->getLanguageService()->getLL('action.' . $this->getCurrentAction());
+                        } catch (\LogicException|\UnexpectedValueException|\OutOfBoundsException $e) {
+                            // Catching all types of exceptions that were previously handled and
+                            // converted to messages
+                            $content .= $this->listTasksAction();
                         } catch (\Exception $e) {
-                            if ($e->getCode() === 1305100019) {
-                                // Invalid controller class name exception
-                                $this->addMessage($e->getMessage(), FlashMessage::ERROR);
-                            }
-                            // An exception may also happen when the task to
-                            // edit could not be found. In this case revert
-                            // to displaying the list of tasks
-                            // It can also happen when attempting to edit a running task
+                            // Catching all "unexpected" exceptions not previously handled
+                            $this->addMessage($e->getMessage(), FlashMessage::ERROR);
                             $content .= $this->listTasksAction();
                         }
                         break;
@@ -388,26 +386,30 @@ class SchedulerModuleController
         $this->view->assign('lastRunMessage', $message);
         $this->view->assign('lastRunSeverity', $severity);
 
-        // Check if CLI script is executable or not
-        $script = GeneralUtility::getFileAbsFileName('EXT:core/bin/typo3');
-        $this->view->assign('script', $script);
+        if (Environment::isComposerMode()) {
+            $this->view->assign('composerMode', true);
+        } else {
+            // Check if CLI script is executable or not
+            $script = GeneralUtility::getFileAbsFileName('EXT:core/bin/typo3');
+            $this->view->assign('script', $script);
+            // Skip this check if running Windows, as rights do not work the same way on this platform
+            // (i.e. the script will always appear as *not* executable)
+            if (Environment::isWindows()) {
+                $isExecutable = true;
+            } else {
+                $isExecutable = is_executable($script);
+            }
+            if ($isExecutable) {
+                $message = $this->getLanguageService()->getLL('msg.cliScriptExecutable');
+                $severity = InfoboxViewHelper::STATE_OK;
+            } else {
+                $message = $this->getLanguageService()->getLL('msg.cliScriptNotExecutable');
+                $severity = InfoboxViewHelper::STATE_ERROR;
+            }
+            $this->view->assign('isExecutableMessage', $message);
+            $this->view->assign('isExecutableSeverity', $severity);
+        }
 
-        // Skip this check if running Windows, as rights do not work the same way on this platform
-        // (i.e. the script will always appear as *not* executable)
-        if (Environment::isWindows()) {
-            $isExecutable = true;
-        } else {
-            $isExecutable = is_executable($script);
-        }
-        if ($isExecutable) {
-            $message = $this->getLanguageService()->getLL('msg.cliScriptExecutable');
-            $severity = InfoboxViewHelper::STATE_OK;
-        } else {
-            $message = $this->getLanguageService()->getLL('msg.cliScriptNotExecutable');
-            $severity = InfoboxViewHelper::STATE_ERROR;
-        }
-        $this->view->assign('isExecutableMessage', $message);
-        $this->view->assign('isExecutableSeverity', $severity);
         $this->view->assign('now', $this->getServerTime());
 
         return $this->view->render();
@@ -1321,8 +1323,10 @@ class SchedulerModuleController
 
     /**
      * Create the panel of buttons for submitting the form or otherwise perform operations.
+     *
+     * @param ServerRequestInterface $request
      */
-    protected function getButtons(): void
+    protected function getButtons(ServerRequestInterface $request): void
     {
         $buttonBar = $this->moduleTemplate->getDocHeaderComponent()->getButtonBar();
         // CSH
@@ -1382,12 +1386,17 @@ class SchedulerModuleController
             $buttonBar->addButton($saveButtonDropdown, ButtonBar::BUTTON_POSITION_LEFT, 3);
         }
 
-        // Edit
+        // Delete
         if ($this->getCurrentAction()->equals(Action::EDIT)) {
-            $deleteButton = $buttonBar->makeInputButton()
-                ->setName('CMD')
-                ->setValue(Action::DELETE)
-                ->setForm('tx_scheduler_form')
+            $deleteButton = $buttonBar->makeLinkButton()
+                ->setHref($this->moduleUri . '&CMD=' . Action::DELETE . '&tx_scheduler[uid]=' . $request->getQueryParams()['tx_scheduler']['uid'])
+                ->setClasses('t3js-modal-trigger')
+                ->setDataAttributes([
+                    'severity' => 'warning',
+                    'title' => $this->getLanguageService()->sL('LLL:EXT:core/Resources/Private/Language/locallang_common.xlf:delete'),
+                    'button-close-text' => $this->getLanguageService()->sL('LLL:EXT:core/Resources/Private/Language/locallang_common.xlf:cancel'),
+                    'content' => $this->getLanguageService()->getLL('msg.delete'),
+                ])
                 ->setIcon($this->moduleTemplate->getIconFactory()->getIcon('actions-edit-delete', Icon::SIZE_SMALL))
                 ->setTitle($this->getLanguageService()->sL('LLL:EXT:core/Resources/Private/Language/locallang_common.xlf:delete'));
             $buttonBar->addButton($deleteButton, ButtonBar::BUTTON_POSITION_LEFT, 4);

@@ -58,7 +58,6 @@ return [
         ],
         'notification_defaults' => [
             'label' => 'LLL:EXT:workspaces/Resources/Private/Language/locallang_db.xlf:sys_workspace_stage.notification_defaults',
-            'displayCond' => 'FIELD:allow_notificaton_settings:BIT:1',
             'config' => [
                 'type' => 'group',
                 'internal_type' => 'db',
@@ -78,7 +77,7 @@ return [
                     ['LLL:EXT:workspaces/Resources/Private/Language/locallang_db.xlf:sys_workspace.settingsDialog.changeablePreselection', ''],
                 ],
                 'default' => 3,
-                'cols' => 2,
+                'cols' => 1,
             ]
         ],
         'notification_preselection' => [
@@ -92,7 +91,7 @@ return [
                     ['LLL:EXT:workspaces/Resources/Private/Language/locallang_db.xlf:sys_workspace.preselection.responsiblePersons', ''],
                 ],
                 'default' => 8,
-                'cols' => 4,
+                'cols' => 1,
             ]
         ]
     ],

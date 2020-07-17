@@ -30,6 +30,8 @@ setUpDockerComposeDotEnv() {
     echo "SCRIPT_VERBOSE=${SCRIPT_VERBOSE}" >> .env
     echo "PHPUNIT_RANDOM=${PHPUNIT_RANDOM}" >> .env
     echo "CGLCHECK_DRY_RUN=${CGLCHECK_DRY_RUN}" >> .env
+    # Set a custom database driver provided by option: -a
+    [[ ! -z "$DATABASE_DRIVER" ]] && echo "DATABASE_DRIVER=${DATABASE_DRIVER}" >> .env
 }
 
 # Load help text into $HELP
@@ -45,6 +47,19 @@ Usage: $0 [options] [file]
 No arguments: Run all unit tests with PHP 7.2
 
 Options:
+    -a <mysqli|pdo_mysql|sqlsrv|pdo_sqlsrv>
+        Only with -s functional
+        Specifies to use another driver, following combinations are available:
+            - mysql55
+                - mysqli (default)
+                - pdo_mysql
+            - mariadb
+                - mysqli (default)
+                - pdo_mysql
+            - mssql
+                - sqlsrv (default)
+                - pdo_sqlsrv
+
     -s <...>
         Specifies which test suite to run
             - acceptance: backend acceptance tests
@@ -75,18 +90,20 @@ Options:
             - unitJavascript: JavaScript unit tests
             - unitRandom: PHP unit tests in random order, add -o <number> to use specific seed
 
-    -d <mariadb|mssql|postgres|sqlite>
+    -d <mariadb|mysql55|mssql|postgres|sqlite>
         Only with -s install|functional
         Specifies on which DBMS tests are performed
             - mariadb (default): use mariadb
+            - mysql55: use MySQL 5.5 server
             - mssql: use mssql microsoft sql server
             - postgres: use postgres
             - sqlite: use sqlite
 
-    -p <7.2|7.3>
+    -p <7.2|7.3|7.4>
         Specifies the PHP minor version to be used
             - 7.2 (default): use PHP 7.2
             - 7.3: use PHP 7.3
+            - 7.4: use PHP 7.4
 
     -e "<phpunit or codeception options>"
         Only with -s functional|unit|unitDeprecated|unitRandom
@@ -183,8 +200,11 @@ OPTIND=1
 # Array for invalid options
 INVALID_OPTIONS=();
 # Simple option parsing based on getopts (! not getopt)
-while getopts ":s:d:p:e:xy:o:nhuv" OPT; do
+while getopts ":a:s:d:p:e:xy:o:nhuv" OPT; do
     case ${OPT} in
+        a)
+            DATABASE_DRIVER=${OPTARG}
+            ;;
         s)
             TEST_SUITE=${OPTARG}
             ;;
@@ -369,13 +389,21 @@ case ${TEST_SUITE} in
         setUpDockerComposeDotEnv
         case ${DBMS} in
             mariadb)
+                [[ ! -z "$DATABASE_DRIVER" ]] && echo "Using driver: ${DATABASE_DRIVER}"
                 docker-compose run prepare_functional_mariadb10
                 docker-compose run functional_mariadb10
                 SUITE_EXIT_CODE=$?
                 ;;
+            mysql55)
+                [[ ! -z "$DATABASE_DRIVER" ]] && echo "Using driver: ${DATABASE_DRIVER}"
+                docker-compose run prepare_functional_mysql55
+                docker-compose run functional_mysql55
+                SUITE_EXIT_CODE=$?
+                ;;
             mssql)
-                docker-compose run prepare_functional_mssql2017cu9
-                docker-compose run functional_mssql2017cu9
+                [[ ! -z "$DATABASE_DRIVER" ]] && echo "Using driver: ${DATABASE_DRIVER}"
+                docker-compose run prepare_functional_mssql2019latest
+                docker-compose run functional_mssql2019latest
                 SUITE_EXIT_CODE=$?
                 ;;
             postgres)

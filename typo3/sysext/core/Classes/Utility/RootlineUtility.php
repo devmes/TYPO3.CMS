@@ -171,7 +171,7 @@ class RootlineUtility
     /**
      * Purges all rootline caches.
      *
-     * Note: This function is intended to be used in unit tests only.
+     * @internal only used in EXT:core, no public API
      */
     public static function purgeCaches()
     {
@@ -201,7 +201,7 @@ class RootlineUtility
     }
 
     /**
-     * Returns the actual rootline
+     * Returns the actual rootline without the tree root (uid=0), including the page with $this->pageUid
      *
      * @return array
      */

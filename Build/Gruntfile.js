@@ -417,17 +417,29 @@ module.exports = function (grunt) {
       },
       ckeditor: {
         options: {
+          copyOptions: {
+            // Using null encoding to allow passthrough of binary files in `process`
+            encoding: null,
+            // Convert CRLF to LF in plain text files to mimic git's autocrlf behaviour
+            process: (content, srcpath) => srcpath.match(/\.(css|js|txt|html|md)$/) ? content.toString('utf8').replace(/\r\n/g, '\n') : content
+          },
           destPrefix: "<%= paths.ckeditor %>Public/JavaScript/Contrib"
         },
         files: {
-          'ckeditor.js': 'ckeditor/ckeditor.js',
-          'plugins/': 'ckeditor/plugins/',
-          'skins/': 'ckeditor/skins/',
-          'lang/': 'ckeditor/lang/'
+          'ckeditor.js': 'ckeditor4/ckeditor.js',
+          'plugins/': 'ckeditor4/plugins/',
+          'skins/': 'ckeditor4/skins/',
+          'lang/': 'ckeditor4/lang/'
         }
       },
       ckeditor_externalplugins: {
         options: {
+          copyOptions: {
+            // Using null encoding to allow passthrough of binary files in `process`
+            encoding: null,
+            // Convert CRLF to LF in plain text files to mimic git's autocrlf behaviour
+            process: (content, srcpath) => srcpath.match(/\.(css|js|txt|html|md)$/) ? content.toString('utf8').replace(/\r\n/g, '\n') : content
+          },
           destPrefix: "<%= paths.ckeditor %>Public/JavaScript/Contrib/plugins"
         },
         files: {
@@ -450,7 +462,9 @@ module.exports = function (grunt) {
           'imagesloaded.pkgd.min.js': 'imagesloaded/imagesloaded.pkgd.min.js',
           'bootstrap-datetimepicker.js': 'eonasdan-bootstrap-datetimepicker/build/js/bootstrap-datetimepicker.min.js',
           'autosize.js': 'autosize/dist/autosize.min.js',
+          /* disabled for removed sourcemap reference in file
           'taboverride.min.js': 'taboverride/build/output/taboverride.min.js',
+          */
           'bootstrap-slider.min.js': 'bootstrap-slider/dist/bootstrap-slider.min.js',
           /* disabled until events are not bound to document only
                        see https://github.com/claviska/jquery-minicolors/issues/192
@@ -467,6 +481,7 @@ module.exports = function (grunt) {
            * for now the file is manually patched by us, thus can't be automatically updated
            */
           // 'd3/d3.js': 'd3/build/d3.min.js',
+          'intersection-observer.js': 'intersection-observer/intersection-observer.js',
           /**
            * copy needed parts of jquery
            */
@@ -494,6 +509,7 @@ module.exports = function (grunt) {
     uglify: {
       thirdparty: {
         files: {
+          "<%= paths.core %>Public/JavaScript/Contrib/intersection-observer.js": ["<%= paths.core %>Public/JavaScript/Contrib/intersection-observer.js"],
           "<%= paths.core %>Public/JavaScript/Contrib/require.js": ["<%= paths.core %>Public/JavaScript/Contrib/require.js"],
           "<%= paths.core %>Public/JavaScript/Contrib/nprogress.js": ["<%= paths.core %>Public/JavaScript/Contrib/nprogress.js"],
           "<%= paths.core %>Public/JavaScript/Contrib/jquery-ui/core.js": ["<%= paths.core %>Public/JavaScript/Contrib/jquery-ui/core.js"],

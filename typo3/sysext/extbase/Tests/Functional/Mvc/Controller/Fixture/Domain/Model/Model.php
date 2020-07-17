@@ -22,4 +22,49 @@ use TYPO3\CMS\Extbase\DomainObject\AbstractEntity;
  */
 class Model extends AbstractEntity
 {
+    /**
+     * @var string
+     */
+    protected $value;
+
+    /**
+     * @var Model
+     */
+    protected $model;
+
+    /**
+     * @return string
+     */
+    public function getValue(): string
+    {
+        return $this->value;
+    }
+
+    /**
+     * @param string $value
+     * @return self
+     */
+    public function setValue(string $value): self
+    {
+        $this->value = $value;
+        return $this;
+    }
+
+    /**
+     * @return Model
+     */
+    public function getModel(): Model
+    {
+        return $this->model;
+    }
+
+    /**
+     * @param Model $model
+     * @return self
+     */
+    public function setModel(Model $model): self
+    {
+        $this->model = $model;
+        return $this;
+    }
 }

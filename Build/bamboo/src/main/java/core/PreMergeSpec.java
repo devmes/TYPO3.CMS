@@ -13,43 +13,28 @@ package core;
  * The TYPO3 project - inspiring people to share!
  */
 
-import java.util.ArrayList;
-
 import com.atlassian.bamboo.specs.api.BambooSpec;
 import com.atlassian.bamboo.specs.api.builders.AtlassianModule;
-import com.atlassian.bamboo.specs.api.builders.BambooKey;
 import com.atlassian.bamboo.specs.api.builders.Variable;
 import com.atlassian.bamboo.specs.api.builders.notification.AnyNotificationRecipient;
 import com.atlassian.bamboo.specs.api.builders.notification.Notification;
-import com.atlassian.bamboo.specs.api.builders.plan.Job;
 import com.atlassian.bamboo.specs.api.builders.plan.Plan;
 import com.atlassian.bamboo.specs.api.builders.plan.Stage;
 import com.atlassian.bamboo.specs.api.builders.plan.branches.BranchCleanup;
 import com.atlassian.bamboo.specs.api.builders.plan.branches.PlanBranchManagement;
 import com.atlassian.bamboo.specs.api.builders.project.Project;
-import com.atlassian.bamboo.specs.api.builders.requirement.Requirement;
 import com.atlassian.bamboo.specs.builders.notification.PlanCompletedNotification;
-import com.atlassian.bamboo.specs.builders.task.ScriptTask;
-import com.atlassian.bamboo.specs.builders.trigger.RemoteTrigger;
 import com.atlassian.bamboo.specs.builders.trigger.RepositoryPollingTrigger;
-import com.atlassian.bamboo.specs.model.task.ScriptTaskProperties;
 import com.atlassian.bamboo.specs.util.BambooServer;
 
 /**
  * Core 9.5 pre-merge test plan.
  */
 @BambooSpec
-public class PreMergeSpec extends AbstractCoreSpec {
+public class PreMergeSpec extends AbstractPreMergeSpec {
 
-    protected static String planName = "Core 9.5 pre-merge";
-    protected static String planKey = "GTC95";
-
-    protected int numberOfAcceptanceTestJobs = 10;
-    protected int numberOfFunctionalMysqlJobs = 10;
-    protected int numberOfFunctionalMssqlJobs = 10;
-    protected int numberOfFunctionalPgsqlJobs = 10;
-    protected int numberOfFunctionalSqliteJobs = 10;
-    protected int numberOfUnitRandomOrderJobs = 1;
+    private static String planName = "Core 9.5 pre-merge";
+    private static String planKey = "GTC95";
 
     /**
      * Run main to publish plan on Bamboo
@@ -62,64 +47,14 @@ public class PreMergeSpec extends AbstractCoreSpec {
     }
 
     /**
-     * Core 9.5 pre-merge plan is in "TYPO3 core" project of bamboo
-     */
-    Project project() {
-        return new Project().name(projectName).key(projectKey);
-    }
-
-    /**
      * Returns full Plan definition
      */
     Plan createPlan() {
-        // PREPARATION stage
-        ArrayList<Job> jobsPreparationStage = new ArrayList<Job>();
-        jobsPreparationStage.add(this.getJobBuildLabels());
-        Stage stagePreparation = new Stage("Preparation")
-            .jobs(jobsPreparationStage.toArray(new Job[jobsPreparationStage.size()]));
+        this.isSecurity = false;
+        Stage stagePreparation = getPreparationStage();
+        Stage stageEarly = getEarlyStage();
 
-        // EARLY stage
-        ArrayList<Job> jobsEarlyStage = new ArrayList<Job>();
-        jobsEarlyStage.add(this.getJobCglCheckGitCommit("PHP72"));
-        jobsEarlyStage.add(this.getJobComposerValidate("PHP72"));
-        Stage stageEarly = new Stage("Early")
-            .jobs(jobsEarlyStage.toArray(new Job[jobsEarlyStage.size()]));
-
-        // MAIN stage
-        ArrayList<Job> jobsMainStage = new ArrayList<Job>();
-
-        jobsMainStage.add(this.getJobAcceptanceTestInstallMysql(0, "PHP73", this.getTaskComposerInstall("PHP73")));
-        jobsMainStage.add(this.getJobAcceptanceTestInstallPgsql(0, "PHP72", this.getTaskComposerInstall("PHP72")));
-        jobsMainStage.add(this.getJobAcceptanceTestInstallSqlite(0, "PHP72", this.getTaskComposerInstall("PHP72")));
-
-        jobsMainStage.addAll(this.getJobsAcceptanceTestsBackendMysql(0, this.numberOfAcceptanceTestJobs, "PHP73", this.getTaskComposerInstall("PHP73")));
-
-        jobsMainStage.add(this.getJobIntegrationAnnotations(0, "PHP72", this.getTaskComposerInstall("PHP72")));
-
-        jobsMainStage.add(this.getJobIntegrationVarious(0, "PHP72", this.getTaskComposerInstall("PHP72")));
-
-        jobsMainStage.addAll(this.getJobsFunctionalTestsMysql(0, this.numberOfFunctionalMysqlJobs, "PHP73", this.getTaskComposerInstall("PHP73")));
-        // mssql functionals are not executed as pre-merge
-        // jobsMainStage.addAll(this.getJobsFunctionalTestsMssql(0, this.numberOfFunctionalMssqlJobs, "PHP72", this.getTaskComposerInstall("PHP72")));
-        jobsMainStage.addAll(this.getJobsFunctionalTestsPgsql(0, this.numberOfFunctionalPgsqlJobs, "PHP72", this.getTaskComposerInstall("PHP72")));
-        jobsMainStage.addAll(this.getJobsFunctionalTestsSqlite(0, this.numberOfFunctionalSqliteJobs, "PHP72", this.getTaskComposerInstall("PHP72")));
-
-        jobsMainStage.add(this.getJobUnitJavaScript(0, "PHP72", this.getTaskComposerInstall("PHP72")));
-
-        jobsMainStage.add(this.getJobLintPhp("PHP72"));
-        jobsMainStage.add(this.getJobLintPhp("PHP73"));
-
-        jobsMainStage.add(this.getJobLintScssTs("PHP72"));
-
-        jobsMainStage.add(this.getJobUnitPhp(0, "PHP72", this.getTaskComposerInstall("PHP72")));
-        jobsMainStage.add(this.getJobUnitPhp(0, "PHP73", this.getTaskComposerInstall("PHP73")));
-        jobsMainStage.add(this.getJobUnitDeprecatedPhp(0, "PHP72", this.getTaskComposerInstall("PHP72")));
-        jobsMainStage.add(this.getJobUnitDeprecatedPhp(0, "PHP73", this.getTaskComposerInstall("PHP73")));
-        jobsMainStage.addAll(this.getJobUnitPhpRandom(0, this.numberOfUnitRandomOrderJobs, "PHP72", this.getTaskComposerInstall("PHP72")));
-        jobsMainStage.addAll(this.getJobUnitPhpRandom(0, this.numberOfUnitRandomOrderJobs, "PHP73", this.getTaskComposerInstall("PHP73")));
-
-        Stage stageMainStage = new Stage("Main stage")
-            .jobs(jobsMainStage.toArray(new Job[jobsMainStage.size()]));
+        Stage stageMainStage = getMainStage();
 
         // Compile plan
         return new Plan(project(), planName, planKey)
@@ -131,13 +66,7 @@ public class PreMergeSpec extends AbstractCoreSpec {
                 stageMainStage
             )
             .linkedRepositories("github TYPO3 TYPO3.CMS 9.5")
-            .triggers(
-                new RepositoryPollingTrigger()
-                    .name("Repository polling for post-merge builds"),
-                new RemoteTrigger()
-                    .name("Remote trigger for pre-merge builds")
-                    .description("Gerrit")
-                    .triggerIPAddresses("5.10.165.218,91.184.35.13"))
+            .triggers(getGerritTrigger())
             .variables(
                 new Variable("changeUrl", ""),
                 new Variable("patchset", "")
@@ -152,6 +81,6 @@ public class PreMergeSpec extends AbstractCoreSpec {
                 .recipients(new AnyNotificationRecipient(new AtlassianModule("com.atlassian.bamboo.plugins.bamboo-slack:recipient.slack"))
                     .recipientString("https://intercept.typo3.com/bamboo")
                 )
-        );
+            );
     }
 }

@@ -304,6 +304,7 @@ class SelectViewHelperTest extends ViewHelperBaseTestcase
     public function multipleSelectCreatesExpectedOptions()
     {
         $this->tagBuilder = new TagBuilder();
+        $this->viewHelper->expects(self::exactly(3))->method('registerFieldNameForFormTokenGeneration')->with('myName[]');
 
         $this->arguments['options'] = [
             'value1' => 'label1',
@@ -320,6 +321,26 @@ class SelectViewHelperTest extends ViewHelperBaseTestcase
         $result = $this->viewHelper->initializeArgumentsAndRender();
         $expected = '<input type="hidden" name="myName" value="" /><select multiple="multiple" name="myName[]"><option value="value1" selected="selected">label1</option>' . \chr(10) . '<option value="value2">label2</option>' . \chr(10) . '<option value="value3" selected="selected">label3</option>' . \chr(10) . '</select>';
         $this->assertSame($expected, $result);
+    }
+
+    /**
+     * @test
+     */
+    public function multipleSelectWithoutOptionsCreatesExpectedOptions()
+    {
+        $this->tagBuilder = new TagBuilder();
+        $this->viewHelper->expects(self::once())->method('registerFieldNameForFormTokenGeneration')->with('myName[]');
+
+        $this->arguments['options'] = [];
+        $this->arguments['value'] = ['value3', 'value1'];
+        $this->arguments['name'] = 'myName';
+        $this->arguments['multiple'] = true;
+
+        $this->injectDependenciesIntoViewHelper($this->viewHelper);
+        $this->viewHelper->setTagBuilder($this->tagBuilder);
+        $result = $this->viewHelper->initializeArgumentsAndRender();
+        $expected = '<input type="hidden" name="myName" value="" /><select multiple="multiple" name="myName[]"></select>';
+        self::assertSame($expected, $result);
     }
 
     /**
@@ -490,7 +511,7 @@ class SelectViewHelperTest extends ViewHelperBaseTestcase
         $mockPersistenceManager->expects($this->any())->method('getIdentifierByObject')->will($this->returnValue(null));
         $this->viewHelper->_set('persistenceManager', $mockPersistenceManager);
 
-        $this->expectException(\TYPO3\CMS\Fluid\Core\ViewHelper\Exception::class);
+        $this->expectException(\TYPO3Fluid\Fluid\Core\ViewHelper\Exception::class);
         $this->expectExceptionCode(1247826696);
 
         $user = new UserDomainClass(1, 'Ingmar', 'Schlecht');

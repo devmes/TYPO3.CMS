@@ -44,7 +44,7 @@ return [
             '7-hideinmenu' => 'apps-pagetree-page-mountpoint-hideinmenu',
             '7-root' => 'apps-pagetree-page-mountpoint-root',
             '199' => 'apps-pagetree-spacer',
-            '199-hideinmenu' => 'apps-pagetree-spacer',
+            '199-hideinmenu' => 'apps-pagetree-spacer-hideinmenu',
             '199-root' => 'apps-pagetree-page-domain',
             '254' => 'apps-pagetree-folder-default',
             '254-hideinmenu' => 'apps-pagetree-folder-default',
@@ -172,10 +172,11 @@ return [
             'exclude' => true,
             'l10n_mode' => 'exclude',
             'label' => 'LLL:EXT:core/Resources/Private/Language/locallang_tca.xlf:TSconfig',
+            'displayCond' => 'HIDE_FOR_NON_ADMINS',
             'config' => [
                 'type' => 'text',
                 'cols' => 40,
-                'rows' => 5,
+                'rows' => 15,
                 'enableTabulator' => true,
                 'fixedFont' => true,
             ],
@@ -393,7 +394,6 @@ return [
         ],
         'nav_hide' => [
             'exclude' => true,
-            'l10n_mode' => 'prefixLangTitle',
             'label' => 'LLL:EXT:core/Resources/Private/Language/locallang_tca.xlf:pages.nav_hide_toggle',
             'config' => [
                 'type' => 'check',
@@ -404,6 +404,9 @@ return [
                         1 => '',
                         'invertStateDisplay' => true
                     ]
+                ],
+                'behaviour' => [
+                    'allowLanguageSynchronization' => true
                 ],
             ]
         ],
@@ -629,7 +632,6 @@ return [
         ],
         'content_from_pid' => [
             'exclude' => true,
-            'l10n_mode' => 'prefixLangTitle',
             'label' => 'LLL:EXT:frontend/Resources/Private/Language/locallang_tca.xlf:pages.content_from_pid',
             'config' => [
                 'type' => 'group',
@@ -644,8 +646,11 @@ return [
                         'addWhere' => ' AND pages.uid != ###THIS_UID###'
                     ]
                 ],
-                'default' => 0
-            ]
+                'default' => 0,
+                'behaviour' => [
+                    'allowLanguageSynchronization' => true
+                ],
+            ],
         ],
         'mount_pid' => [
             'l10n_mode' => 'exclude',
@@ -910,6 +915,7 @@ return [
             'exclude' => true,
             'l10n_mode' => 'exclude',
             'label' => 'LLL:EXT:frontend/Resources/Private/Language/locallang_tca.xlf:pages.tsconfig_includes',
+            'displayCond' => 'HIDE_FOR_NON_ADMINS',
             'config' => [
                 'type' => 'select',
                 'renderType' => 'selectMultipleSideBySide',
@@ -923,6 +929,38 @@ return [
     'types' => [
         // normal
         (string)\TYPO3\CMS\Frontend\Page\PageRepository::DOKTYPE_DEFAULT => [
+            'showitem' => '
+                --div--;LLL:EXT:core/Resources/Private/Language/Form/locallang_tabs.xlf:general,
+                    --palette--;;standard,
+                    --palette--;;title,
+                --div--;LLL:EXT:frontend/Resources/Private/Language/locallang_tca.xlf:pages.tabs.metadata,
+                    --palette--;;abstract,
+                    --palette--;;metatags,
+                    --palette--;;editorial,
+                --div--;LLL:EXT:frontend/Resources/Private/Language/locallang_tca.xlf:pages.tabs.appearance,
+                    --palette--;;layout,
+                    --palette--;;replace,
+                --div--;LLL:EXT:frontend/Resources/Private/Language/locallang_tca.xlf:pages.tabs.behaviour,
+                    --palette--;;links,
+                    --palette--;;caching,
+                    --palette--;;miscellaneous,
+                    --palette--;;module,
+                --div--;LLL:EXT:frontend/Resources/Private/Language/locallang_tca.xlf:pages.tabs.resources,
+                    --palette--;;media,
+                    --palette--;;config,
+                --div--;LLL:EXT:core/Resources/Private/Language/Form/locallang_tabs.xlf:language,
+                    --palette--;;language,
+                --div--;LLL:EXT:frontend/Resources/Private/Language/locallang_tca.xlf:pages.tabs.access,
+                    --palette--;;visibility,
+                    --palette--;;access,
+                --div--;LLL:EXT:core/Resources/Private/Language/Form/locallang_tabs.xlf:categories,
+                    categories,
+                --div--;LLL:EXT:core/Resources/Private/Language/Form/locallang_tabs.xlf:notes,
+                    rowDescription,
+                --div--;LLL:EXT:core/Resources/Private/Language/Form/locallang_tabs.xlf:extended,
+            '
+        ],
+        (string)\TYPO3\CMS\Frontend\Page\PageRepository::DOKTYPE_BE_USER_SECTION => [
             'showitem' => '
                 --div--;LLL:EXT:core/Resources/Private/Language/Form/locallang_tabs.xlf:general,
                     --palette--;;standard,

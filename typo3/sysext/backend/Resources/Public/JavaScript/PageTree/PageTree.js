@@ -32,6 +32,22 @@ define(['jquery',
      */
     var PageTree = function() {
       SvgTree.call(this);
+      this.settings.defaultProperties = {
+        hasChildren: false,
+        nameSourceField: 'title',
+        prefix: '',
+        suffix: '',
+        locked: false,
+        overlayIcon: '',
+        selectable: true,
+        expanded: false,
+        checked: false,
+        backgroundColor: '',
+        stopPageTree: false,
+        class: '',
+        readableRootline: '',
+        isMountPoint: false,
+      };
     };
 
     PageTree.prototype = Object.create(SvgTree.prototype);
@@ -50,7 +66,7 @@ define(['jquery',
         return false;
       }
 
-      _this.settings.isDragAnDrop = true;
+      _this.settings.isDragAnDrop = settings.allowDragMove;
       _this.dispatch.on('nodeSelectedAfter.pageTree', _this.nodeSelectedAfter);
       _this.dispatch.on('nodeRightClick.pageTree', _this.nodeRightClick);
       _this.dispatch.on('contextmenu.pageTree', _this.contextmenu);
@@ -461,6 +477,10 @@ define(['jquery',
 
     PageTree.prototype.editNodeLabel = function(node) {
       var _this = this;
+
+      if (!node.allowEdit) {
+        return;
+      }
 
       _this.removeEditedText();
       _this.nodeIsEdit = true;

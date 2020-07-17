@@ -20,6 +20,8 @@ use TYPO3\CMS\Backend\Routing\UriBuilder;
 use TYPO3\CMS\Core\Authentication\BackendUserAuthentication;
 use TYPO3\CMS\Core\Cache\CacheManager;
 use TYPO3\CMS\Core\Cache\Frontend\FrontendInterface;
+use TYPO3\CMS\Core\Context\Context;
+use TYPO3\CMS\Core\Context\DateTimeAspect;
 use TYPO3\CMS\Core\Core\Environment;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
@@ -45,7 +47,6 @@ use TYPO3\CMS\Core\Routing\InvalidRouteArgumentsException;
 use TYPO3\CMS\Core\Routing\RouterInterface;
 use TYPO3\CMS\Core\Routing\SiteMatcher;
 use TYPO3\CMS\Core\Site\Entity\PseudoSite;
-use TYPO3\CMS\Core\Site\Entity\Site;
 use TYPO3\CMS\Core\Site\SiteFinder;
 use TYPO3\CMS\Core\Type\Bitmask\Permission;
 use TYPO3\CMS\Core\TypoScript\Parser\TypoScriptParser;
@@ -110,20 +111,20 @@ class BackendUtility
         return ' AND ' . $expressionBuilder->eq(
             ($tableAlias ?: $table) . '.' . $GLOBALS['TCA'][$table]['ctrl']['delete'],
             0
-            );
+        );
     }
 
     /**
      * Gets record with uid = $uid from $table
      * You can set $field to a list of fields (default is '*')
-     * Additional WHERE clauses can be added by $where (fx. ' AND blabla = 1')
+     * Additional WHERE clauses can be added by $where (fx. ' AND some_field = 1')
      * Will automatically check if records has been deleted and if so, not return anything.
      * $table must be found in $GLOBALS['TCA']
      *
      * @param string $table Table name present in $GLOBALS['TCA']
      * @param int $uid UID of record
      * @param string $fields List of fields to select
-     * @param string $where Additional WHERE clause, eg. " AND blablabla = 0
+     * @param string $where Additional WHERE clause, eg. ' AND some_field = 0'
      * @param bool $useDeleteClause Use the deleteClause to check if a record is deleted (default TRUE)
      * @return array|null Returns the row if found, otherwise NULL
      */
@@ -166,7 +167,7 @@ class BackendUtility
      * @param string $table Table name present in $GLOBALS['TCA']
      * @param int $uid UID of record
      * @param string $fields List of fields to select
-     * @param string $where Additional WHERE clause, eg. " AND blablabla = 0
+     * @param string $where Additional WHERE clause, eg. ' AND some_field = 0'
      * @param bool $useDeleteClause Use the deleteClause to check if a record is deleted (default TRUE)
      * @param bool $unsetMovePointers If TRUE the function does not return a "pointer" row for moved records in a workspace
      * @return array Returns the row if found, otherwise nothing
@@ -369,7 +370,7 @@ class BackendUtility
      * @param bool $workspaceOL If TRUE, version overlay is applied. This must be requested specifically because it is
      *          usually only wanted when the rootline is used for visual output while for permission checking you want the raw thing!
      * @param string[] $additionalFields Additional Fields to select for rootline records
-     * @return array Root line array, all the way to the page tree root (or as far as $clause allows!)
+     * @return array Root line array, all the way to the page tree root uid=0 (or as far as $clause allows!), including the page given as $uid
      */
     public static function BEgetRootLine($uid, $clause = '', $workspaceOL = false, array $additionalFields = [])
     {
@@ -377,7 +378,7 @@ class BackendUtility
         $beGetRootLineCache = $runtimeCache->get('backendUtilityBeGetRootLine') ?: [];
         $output = [];
         $pid = $uid;
-        $ident = $pid . '-' . $clause . '-' . $workspaceOL . ($additionalFields ? '-' . implode(',', $additionalFields) : '');
+        $ident = $pid . '-' . $clause . '-' . $workspaceOL . ($additionalFields ? '-' . md5(implode(',', $additionalFields)) : '');
         if (is_array($beGetRootLineCache[$ident] ?? false)) {
             $output = $beGetRootLineCache[$ident];
         } else {
@@ -450,53 +451,64 @@ class BackendUtility
     {
         $runtimeCache = GeneralUtility::makeInstance(CacheManager::class)->getCache('cache_runtime');
         $pageForRootlineCache = $runtimeCache->get('backendUtilityPageForRootLine') ?: [];
-        $ident = $uid . '-' . $clause . '-' . $workspaceOL;
+        $statementCacheIdent = md5($clause . ($additionalFields ? '-' . implode(',', $additionalFields) : ''));
+        $ident = $uid . '-' . $workspaceOL . '-' . $statementCacheIdent;
         if (is_array($pageForRootlineCache[$ident] ?? false)) {
             $row = $pageForRootlineCache[$ident];
         } else {
-            $queryBuilder = static::getQueryBuilderForTable('pages');
-            $queryBuilder->getRestrictions()
-                ->removeAll()
-                ->add(GeneralUtility::makeInstance(DeletedRestriction::class));
+            $statement = $runtimeCache->get('getPageForRootlineStatement-' . $statementCacheIdent);
+            if (!$statement) {
+                $queryBuilder = static::getQueryBuilderForTable('pages');
+                $queryBuilder->getRestrictions()
+                             ->removeAll()
+                             ->add(GeneralUtility::makeInstance(DeletedRestriction::class));
 
-            $row = $queryBuilder
-                ->select(
-                    'pid',
-                    'uid',
-                    'title',
-                    'doktype',
-                    'slug',
-                    'tsconfig_includes',
-                    'TSconfig',
-                    'is_siteroot',
-                    't3ver_oid',
-                    't3ver_wsid',
-                    't3ver_state',
-                    't3ver_stage',
-                    'backend_layout_next_level',
-                    'hidden',
-                    'starttime',
-                    'endtime',
-                    'fe_group',
-                    'nav_hide',
-                    'content_from_pid',
-                    'module',
-                    'extendToSubpages',
-                    ...$additionalFields
-                )
-                ->from('pages')
-                ->where(
-                    $queryBuilder->expr()->eq('uid', $queryBuilder->createNamedParameter($uid, \PDO::PARAM_INT)),
-                    QueryHelper::stripLogicalOperatorPrefix($clause)
-                )
-                ->execute()
-                ->fetch();
+                $queryBuilder
+                    ->select(
+                        'pid',
+                        'uid',
+                        'title',
+                        'doktype',
+                        'slug',
+                        'tsconfig_includes',
+                        'TSconfig',
+                        'is_siteroot',
+                        't3ver_oid',
+                        't3ver_wsid',
+                        't3ver_state',
+                        't3ver_stage',
+                        'backend_layout_next_level',
+                        'hidden',
+                        'starttime',
+                        'endtime',
+                        'fe_group',
+                        'nav_hide',
+                        'content_from_pid',
+                        'module',
+                        'extendToSubpages',
+                        ...$additionalFields
+                    )
+                    ->from('pages')
+                    ->where(
+                        $queryBuilder->expr()->eq('uid', $queryBuilder->createPositionalParameter($uid, \PDO::PARAM_INT)),
+                        QueryHelper::stripLogicalOperatorPrefix($clause)
+                    );
+                $statement = $queryBuilder->execute();
+                $runtimeCache->set('getPageForRootlineStatement-' . $statementCacheIdent, $statement);
+            } else {
+                $statement->bindValue(1, (int)$uid);
+                $statement->execute();
+            }
+            $row = $statement->fetch();
+            $statement->closeCursor();
 
             if ($row) {
                 $newLocation = false;
                 if ($workspaceOL) {
                     self::workspaceOL('pages', $row);
-                    $newLocation = self::getMovePlaceholder('pages', $row['uid'], 'pid');
+                    if (is_array($row) && (int)$row['t3ver_state'] === VersionState::MOVE_POINTER) {
+                        $newLocation = self::getMovePlaceholder('pages', $row['uid'], 'pid');
+                    }
                 }
                 if (is_array($row)) {
                     if ($newLocation !== false) {
@@ -525,7 +537,7 @@ class BackendUtility
         if ($clearExpansion) {
             $expandedPages = [];
         } else {
-            $expandedPages = unserialize($beUser->uc['browseTrees']['browsePages']);
+            $expandedPages = unserialize($beUser->uc['browseTrees']['browsePages'], ['allowed_classes' => false]);
         }
         // Get rootline:
         $rL = self::BEgetRootLine($pid);
@@ -568,7 +580,7 @@ class BackendUtility
         if ($clause !== '' && strpos($clause, 'AND') !== 0) {
             $clause = 'AND ' . $clause;
         }
-        $data = self::BEgetRootLine($uid, $clause);
+        $data = self::BEgetRootLine($uid, $clause, true);
         foreach ($data as $record) {
             if ($record['uid'] === 0) {
                 continue;
@@ -631,7 +643,7 @@ class BackendUtility
                 }
             } else {
                 $pageinfo = self::getRecord('pages', $id, '*', $perms_clause);
-                if ($pageinfo['uid'] && static::getBackendUserAuthentication()->isInWebMount($id, $perms_clause)) {
+                if ($pageinfo['uid'] && static::getBackendUserAuthentication()->isInWebMount($pageinfo, $perms_clause)) {
                     self::workspaceOL('pages', $pageinfo);
                     if (is_array($pageinfo)) {
                         self::fixVersioningPid('pages', $pageinfo);
@@ -958,9 +970,9 @@ class BackendUtility
                             && ExtensionManagementUtility::isLoaded($includeTsConfigFileExtensionKey)
                             && (string)$includeTsConfigFilename !== ''
                         ) {
-                            $includeTsConfigFileAndPath = ExtensionManagementUtility::extPath($includeTsConfigFileExtensionKey) .
-                                $includeTsConfigFilename;
-                            if (file_exists($includeTsConfigFileAndPath)) {
+                            $extensionPath = ExtensionManagementUtility::extPath($includeTsConfigFileExtensionKey);
+                            $includeTsConfigFileAndPath = PathUtility::getCanonicalPath($extensionPath . $includeTsConfigFilename);
+                            if (strpos($includeTsConfigFileAndPath, $extensionPath) === 0 && file_exists($includeTsConfigFileAndPath)) {
                                 $tsDataArray['uid_' . $v['uid'] . '_static_' . $key] = file_get_contents($includeTsConfigFileAndPath);
                             }
                         }
@@ -1511,10 +1523,10 @@ class BackendUtility
                 $parts[] = 'Deleted element!';
                 break;
             case new VersionState(VersionState::MOVE_PLACEHOLDER):
-                $parts[] = 'NEW LOCATION (PLH) WSID#' . $row['t3ver_wsid'];
+                $parts[] = 'OLD LOCATION (Move Placeholder) WSID#' . $row['t3ver_wsid'];
                 break;
             case new VersionState(VersionState::MOVE_POINTER):
-                $parts[] = 'OLD LOCATION (PNT) WSID#' . $row['t3ver_wsid'];
+                $parts[] = 'NEW LOCATION (Move-to Pointer) WSID#' . $row['t3ver_wsid'];
                 break;
             case new VersionState(VersionState::NEW_PLACEHOLDER_VERSION):
                 $parts[] = 'New element!';
@@ -1631,10 +1643,10 @@ class BackendUtility
                         $out .= ' - Deleted element!';
                         break;
                     case new VersionState(VersionState::MOVE_PLACEHOLDER):
-                        $out .= ' - NEW LOCATION (PLH) WSID#' . $row['t3ver_wsid'];
+                        $out .= ' - OLD LOCATION (Move Placeholder) WSID#' . $row['t3ver_wsid'];
                         break;
                     case new VersionState(VersionState::MOVE_POINTER):
-                        $out .= ' - OLD LOCATION (PNT)  WSID#' . $row['t3ver_wsid'];
+                        $out .= ' - NEW LOCATION (Move-to Pointer) WSID#' . $row['t3ver_wsid'];
                         break;
                     case new VersionState(VersionState::NEW_PLACEHOLDER_VERSION):
                         $out .= ' - New element!';
@@ -2677,7 +2689,9 @@ class BackendUtility
         } else {
             $permissionClause = $GLOBALS['BE_USER']->getPagePermsClause(Permission::PAGE_SHOW);
             $pageInfo = self::readPageAccess($pageUid, $permissionClause);
-            $additionalGetVars .= self::ADMCMD_previewCmds($pageInfo);
+            // prepare custom context for link generation (to allow for example time based previews)
+            $context = clone GeneralUtility::makeInstance(Context::class);
+            $additionalGetVars .= self::ADMCMD_previewCmds($pageInfo, $context);
 
             // Build the URL with a site as prefix, if configured
             $siteFinder = GeneralUtility::makeInstance(SiteFinder::class);
@@ -2692,7 +2706,7 @@ class BackendUtility
                     $additionalQueryParams['_language'] = $additionalQueryParams['_language'] ?? $additionalQueryParams['L'];
                     unset($additionalQueryParams['L']);
                 }
-                $previewUrl = (string)$site->getRouter()->generateUri(
+                $previewUrl = (string)$site->getRouter($context)->generateUri(
                     $pageUid,
                     $additionalQueryParams,
                     $anchorSection,
@@ -3662,7 +3676,6 @@ class BackendUtility
                         $queryBuilder->createNamedParameter($domain . '/', \PDO::PARAM_STR)
                     )
                 )
-
             )
             ->execute()
             ->fetch();
@@ -4367,29 +4380,29 @@ class BackendUtility
             $warrantyNote = sprintf(
                 $lang->sL('LLL:EXT:backend/Resources/Private/Language/locallang_login.xlf:warranty.by'),
                 htmlspecialchars($loginCopyrightWarrantyProvider),
-                '<a href="' . htmlspecialchars($loginCopyrightWarrantyURL) . '" target="_blank">',
+                '<a href="' . htmlspecialchars($loginCopyrightWarrantyURL) . '" target="_blank" rel="noopener noreferrer">',
                 '</a>'
             );
         } else {
             $warrantyNote = sprintf(
                 $lang->sL('LLL:EXT:backend/Resources/Private/Language/locallang_login.xlf:no.warranty'),
-                '<a href="' . TYPO3_URL_LICENSE . '" target="_blank">',
+                '<a href="' . TYPO3_URL_LICENSE . '" target="_blank" rel="noopener noreferrer">',
                 '</a>'
             );
         }
-        $cNotice = '<a href="' . TYPO3_URL_GENERAL . '" target="_blank">' .
+        $cNotice = '<a href="' . TYPO3_URL_GENERAL . '" target="_blank" rel="noopener noreferrer">' .
             $lang->sL('LLL:EXT:backend/Resources/Private/Language/locallang_login.xlf:typo3.cms') . '</a>. ' .
             $lang->sL('LLL:EXT:backend/Resources/Private/Language/locallang_login.xlf:copyright') . ' &copy; '
             . htmlspecialchars(TYPO3_copyright_year) . ' Kasper Sk&aring;rh&oslash;j. ' .
             $lang->sL('LLL:EXT:backend/Resources/Private/Language/locallang_login.xlf:extension.copyright') . ' ' .
             sprintf(
                 $lang->sL('LLL:EXT:backend/Resources/Private/Language/locallang_login.xlf:details.link'),
-                '<a href="' . TYPO3_URL_GENERAL . '" target="_blank">' . TYPO3_URL_GENERAL . '</a>'
+                '<a href="' . TYPO3_URL_GENERAL . '" target="_blank" rel="noopener noreferrer">' . TYPO3_URL_GENERAL . '</a>'
             ) . ' ' .
             strip_tags($warrantyNote, '<a>') . ' ' .
             sprintf(
                 $lang->sL('LLL:EXT:backend/Resources/Private/Language/locallang_login.xlf:free.software'),
-                '<a href="' . TYPO3_URL_LICENSE . '" target="_blank">',
+                '<a href="' . TYPO3_URL_LICENSE . '" target="_blank" rel="noopener noreferrer">',
                 '</a> '
             )
             . $lang->sL('LLL:EXT:backend/Resources/Private/Language/locallang_login.xlf:keep.notice');
@@ -4400,10 +4413,11 @@ class BackendUtility
      * Creates ADMCMD parameters for the "viewpage" extension / frontend
      *
      * @param array $pageInfo Page record
+     * @param \TYPO3\CMS\Core\Context\Context $context
      * @return string Query-parameters
      * @internal
      */
-    public static function ADMCMD_previewCmds($pageInfo)
+    public static function ADMCMD_previewCmds($pageInfo, Context $context)
     {
         $simUser = '';
         $simTime = '';
@@ -4427,11 +4441,24 @@ class BackendUtility
                 $simUser = '&ADMCMD_simUser=' . $activeFeGroupRow['uid'];
             }
         }
-        if ($pageInfo['starttime'] > $GLOBALS['EXEC_TIME']) {
-            $simTime = '&ADMCMD_simTime=' . $pageInfo['starttime'];
+        $startTime = (int)$pageInfo['starttime'];
+        $endTime = (int)$pageInfo['endtime'];
+        if ($startTime > $GLOBALS['EXEC_TIME']) {
+            // simulate access time to ensure PageRepository will find the page and in turn PageRouter will generate
+            // an URL for it
+            $dateAspect = GeneralUtility::makeInstance(DateTimeAspect::class, new \DateTimeImmutable('@' . $startTime));
+            $context->setAspect('date', $dateAspect);
+            $simTime = '&ADMCMD_simTime=' . $startTime;
         }
-        if ($pageInfo['endtime'] < $GLOBALS['EXEC_TIME'] && $pageInfo['endtime'] != 0) {
-            $simTime = '&ADMCMD_simTime=' . ($pageInfo['endtime'] - 1);
+        if ($endTime < $GLOBALS['EXEC_TIME'] && $endTime !== 0) {
+            // Set access time to page's endtime subtracted one second to ensure PageRepository will find the page and
+            // in turn PageRouter will generate an URL for it
+            $dateAspect = GeneralUtility::makeInstance(
+                DateTimeAspect::class,
+                new \DateTimeImmutable('@' . ($endTime - 1))
+            );
+            $context->setAspect('date', $dateAspect);
+            $simTime = '&ADMCMD_simTime=' . ($endTime - 1);
         }
         return $simUser . $simTime;
     }

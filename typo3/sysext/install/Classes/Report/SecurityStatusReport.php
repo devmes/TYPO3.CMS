@@ -19,6 +19,7 @@ use TYPO3\CMS\Core\Crypto\PasswordHashing\InvalidPasswordHashException;
 use TYPO3\CMS\Core\Crypto\PasswordHashing\PasswordHashFactory;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Install\Service\EnableFileService;
+use TYPO3\CMS\Install\SystemEnvironment\ServerResponse\ServerResponseCheck;
 use TYPO3\CMS\Reports\Status;
 
 /**
@@ -37,7 +38,8 @@ class SecurityStatusReport implements \TYPO3\CMS\Reports\StatusProviderInterface
         $this->executeAdminCommand();
         return [
             'installToolPassword' => $this->getInstallToolPasswordStatus(),
-            'installToolProtection' => $this->getInstallToolProtectionStatus()
+            'installToolProtection' => $this->getInstallToolProtectionStatus(),
+            'serverResponseStatus' => GeneralUtility::makeInstance(ServerResponseCheck::class)->asStatus(),
         ];
     }
 
@@ -52,7 +54,7 @@ class SecurityStatusReport implements \TYPO3\CMS\Reports\StatusProviderInterface
         $value = $GLOBALS['LANG']->getLL('status_ok');
         $message = '';
         $severity = Status::OK;
-        $validPassword = true;
+        $isDefaultPassword = false;
         $installToolPassword = $GLOBALS['TYPO3_CONF_VARS']['BE']['installToolPassword'];
         $hashInstance = null;
         $hashFactory = GeneralUtility::makeInstance(PasswordHashFactory::class);
@@ -60,13 +62,17 @@ class SecurityStatusReport implements \TYPO3\CMS\Reports\StatusProviderInterface
             $hashInstance = $hashFactory->get($installToolPassword, 'BE');
         } catch (InvalidPasswordHashException $e) {
             // $hashInstance stays null
+            $value = $GLOBALS['LANG']->getLL('status_wrongValue');
+            $message = $e->getMessage();
+            $severity = Status::ERROR;
         }
-        if ($installToolPassword !== '' && $hashInstance === null) {
-            $validPassword = !$hashFactory->checkPassword('joh316', $installToolPassword);
-        } elseif ($installToolPassword === md5('joh316')) {
-            $validPassword = false;
+        if ($installToolPassword !== '' && $hashInstance !== null) {
+            $isDefaultPassword = $hashInstance->checkPassword('joh316', $installToolPassword);
+        } elseif ($installToolPassword === 'bacb98acf97e0b6112b1d1b650b84971') {
+            // using MD5 of legacy default password 'joh316'
+            $isDefaultPassword = true;
         }
-        if (!$validPassword) {
+        if ($isDefaultPassword) {
             $value = $GLOBALS['LANG']->getLL('status_insecure');
             $severity = Status::ERROR;
             /** @var \TYPO3\CMS\Backend\Routing\UriBuilder $uriBuilder */

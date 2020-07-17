@@ -17,10 +17,10 @@ namespace TYPO3\CMS\Fluid\ViewHelpers\Link;
 use TYPO3Fluid\Fluid\Core\ViewHelper\AbstractTagBasedViewHelper;
 
 /**
- * A view helper for creating links to extbase actions.
+ * A ViewHelper for creating links to extbase actions.
  *
  * Examples
- * --------
+ * ========
  *
  * link to the show-action of the current controller::
  *
@@ -28,9 +28,9 @@ use TYPO3Fluid\Fluid\Core\ViewHelper\AbstractTagBasedViewHelper;
  *
  * Output::
  *
- *    <a href="index.php?id=123&tx_myextension_plugin[action]=show&tx_myextension_plugin[controller]=Standard&cHash=xyz">action link</f:link.action>
+ *    <a href="index.php?id=123&tx_myextension_plugin[action]=show&tx_myextension_plugin[controller]=Standard&cHash=xyz">action link</a>
  *
- * (depending on the current page and your TS configuration)
+ * Depending on the current page and your TypoScript configuration.
  */
 class ActionViewHelper extends AbstractTagBasedViewHelper
 {
@@ -107,6 +107,9 @@ class ActionViewHelper extends AbstractTagBasedViewHelper
             ->setArgumentsToBeExcludedFromQueryString($argumentsToBeExcludedFromQueryString)
             ->setAddQueryStringMethod($addQueryStringMethod)
             ->uriFor($action, $parameters, $controller, $extensionName, $pluginName);
+        if ($uri === '') {
+            return $this->renderChildren();
+        }
         $this->tag->addAttribute('href', $uri);
         $this->tag->setContent($this->renderChildren());
         $this->tag->forceClosingTag(true);

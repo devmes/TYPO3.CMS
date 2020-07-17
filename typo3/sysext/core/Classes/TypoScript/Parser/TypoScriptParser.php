@@ -367,7 +367,7 @@ class TypoScriptParser
                         }
                         // Disable multiline
                         $this->multiLineEnabled = false;
-                        $theValue = implode($this->multiLineValue, LF);
+                        $theValue = implode(LF, $this->multiLineValue);
                         if (strpos($this->multiLineObject, '.') !== false) {
                             // Set the value deeper.
                             $this->setVal($this->multiLineObject, $setup, [$theValue]);
@@ -388,6 +388,10 @@ class TypoScriptParser
                         $this->multiLineValue[] = $this->raw[$this->rawP - 1];
                     }
                 } elseif ($this->inBrace === 0 && $line[0] === '[') {
+                    if (substr(trim($line), -1, 1) !== ']') {
+                        $this->error('Line ' . ($this->lineNumberOffset + $this->rawP - 1) . ': Invalid condition found, any condition must end with "]": ' . $line);
+                        return $line;
+                    }
                     // Beginning of condition (only on level zero compared to brace-levels
                     if ($this->syntaxHighLight) {
                         $this->regHighLight('condition', $lineP);
@@ -499,7 +503,7 @@ class TypoScriptParser
                                             }
                                             // unserialize(serialize(...)) may look stupid but is needed because of some reference issues.
                                             // See forge issue #76919 and functional test hasFlakyReferences()
-                                            $this->setVal($objStrName, $setup, unserialize(serialize($res)), 1);
+                                            $this->setVal($objStrName, $setup, unserialize(serialize($res), ['allowed_classes' => false]), 1);
                                             break;
                                         case '>':
                                             if ($this->syntaxHighLight) {

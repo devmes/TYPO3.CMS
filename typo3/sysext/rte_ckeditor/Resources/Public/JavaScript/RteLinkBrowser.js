@@ -20,12 +20,13 @@ define(['jquery', 'TYPO3/CMS/Recordlist/LinkBrowser', 'TYPO3/CMS/Backend/Modal']
 
   /**
    *
-   * @type {{plugin: null, CKEditor: null, siteUrl: string}}
+   * @type {{plugin: null, CKEditor: null, ranges: null, siteUrl: string}}
    * @exports TYPO3/CMS/RteCkeditor/RteLinkBrowser
    */
   var RteLinkBrowser = {
     plugin: null,
     CKEditor: null,
+    ranges: [],
     siteUrl: ''
   };
 
@@ -50,6 +51,13 @@ define(['jquery', 'TYPO3/CMS/Recordlist/LinkBrowser', 'TYPO3/CMS/Backend/Modal']
         }
       });
     }
+
+    window.addEventListener('beforeunload', function () {
+      RteLinkBrowser.CKEditor.getSelection().selectRanges(RteLinkBrowser.ranges);
+    });
+
+    // Backup all ranges that are active when the Link Browser is requested
+    RteLinkBrowser.ranges = RteLinkBrowser.CKEditor.getSelection().getRanges();
 
     // siteUrl etc are added as data attributes to the body tag
     $.extend(RteLinkBrowser, $('body').data());
@@ -96,9 +104,27 @@ define(['jquery', 'TYPO3/CMS/Recordlist/LinkBrowser', 'TYPO3/CMS/Backend/Modal']
       linkElement.setAttribute(attrName, attrValue);
     });
 
-    linkElement.setAttribute('href', link + params);
+    // Make sure, parameters and anchor are in correct order
+    var linkMatch = link.match(/^([a-z0-9]+:\/\/[^:\/?#]+(?:\/?[^?#]*)?)(\??[^#]*)(#?.*)$/)
+    if (linkMatch && linkMatch.length > 0) {
+      link = linkMatch[1] + linkMatch[2];
+      var paramsPrefix = linkMatch[2].length > 0 ? '&' : '?';
+      if (params.length > 0) {
+        if (params[0] === '&') {
+          params = params.substr(1)
+        }
+        // If params is set, append it
+        if (params.length > 0) {
+          link = link + paramsPrefix + params;
+        }
+      }
+      link = link + linkMatch[3];
+    }
+
+    linkElement.setAttribute('href', link);
 
     var selection = RteLinkBrowser.CKEditor.getSelection();
+    selection.selectRanges(RteLinkBrowser.ranges);
     if (selection && selection.getSelectedText() === '') {
       selection.selectElement(selection.getStartElement());
     }

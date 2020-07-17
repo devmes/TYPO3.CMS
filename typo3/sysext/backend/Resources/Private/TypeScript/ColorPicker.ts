@@ -51,6 +51,16 @@ class ColorPicker {
         $element.val('');
       }
     });
+    // On blur, use the formatted value from minicolors
+    $(document).on('blur', '.t3js-color-picker', (event: Event): void => {
+      const $element = $(event.target);
+      $element.closest('.t3js-formengine-field-item')
+        .find('input[type="hidden"]')
+        .val($element.val());
+      if ($element.val() === '') {
+        $element.trigger('paste');
+      }
+    });
   }
 }
 // create an instance and return it

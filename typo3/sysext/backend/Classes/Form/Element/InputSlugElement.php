@@ -105,6 +105,9 @@ class InputSlugElement extends AbstractFormElement
         $toggleButtonTitle = $this->getLanguageService()->sL('LLL:EXT:core/Resources/Private/Language/locallang_core.xlf:buttons.toggleSlugExplanation');
         $recreateButtonTitle = $this->getLanguageService()->sL('LLL:EXT:core/Resources/Private/Language/locallang_core.xlf:buttons.recreateSlugExplanation');
 
+        $successMessage = sprintf($this->getLanguageService()->sL('LLL:EXT:core/Resources/Private/Language/locallang_core.xlf:slugCreation.success.' . ($table === 'pages' ? 'page' : 'record')), $baseUrl);
+        $errorMessage = sprintf($this->getLanguageService()->sL('LLL:EXT:core/Resources/Private/Language/locallang_core.xlf:slugCreation.error'), $baseUrl);
+
         $thisSlugId = 't3js-form-field-slug-id' . StringUtility::getUniqueId();
         $mainFieldHtml = [];
         $mainFieldHtml[] = '<div class="formengine-field-item t3js-formengine-field-item">';
@@ -154,8 +157,8 @@ class InputSlugElement extends AbstractFormElement
             $mainFieldHtml[] =      '</div>';
         }
         $mainFieldHtml[] =          '<div class="form-wizards-items-bottom">';
-        $mainFieldHtml[] =              '<span class="t3js-form-proposal-accepted hidden label label-success">Congrats, this page will look like ' . htmlspecialchars($baseUrl) . '<span>/abc/</span></span>';
-        $mainFieldHtml[] =              '<span class="t3js-form-proposal-different hidden label label-warning">Hmm, that is taken, how about ' . htmlspecialchars($baseUrl) . '<span>/abc/</span></span>';
+        $mainFieldHtml[] =              '<span class="t3js-form-proposal-accepted hidden label label-success">' . htmlspecialchars($successMessage) . '<span>/abc/</span></span>';
+        $mainFieldHtml[] =              '<span class="t3js-form-proposal-different hidden label label-warning">' . htmlspecialchars($errorMessage) . '<span>/abc/</span></span>';
         $mainFieldHtml[] =              $fieldWizardHtml;
         $mainFieldHtml[] =          '</div>';
         $mainFieldHtml[] =      '</div>';
@@ -166,11 +169,16 @@ class InputSlugElement extends AbstractFormElement
 
         [$commonElementPrefix] = GeneralUtility::revExplode('[', $parameterArray['itemFormElName'], 2);
         $validInputNamesToListenTo = [];
+        $includeUidInValues = false;
         foreach ($config['generatorOptions']['fields'] ?? [] as $fieldNameParts) {
             if (is_string($fieldNameParts)) {
                 $fieldNameParts = GeneralUtility::trimExplode(',', $fieldNameParts);
             }
             foreach ($fieldNameParts as $listenerFieldName) {
+                if ($listenerFieldName === 'uid') {
+                    $includeUidInValues = true;
+                    continue;
+                }
                 $validInputNamesToListenTo[$listenerFieldName] = $commonElementPrefix . '[' . htmlspecialchars($listenerFieldName) . ']';
             }
         }
@@ -202,6 +210,7 @@ class InputSlugElement extends AbstractFormElement
             'signature' => $signature,
             'command' => $this->data['command'],
             'parentPageId' => $parentPageId,
+            'includeUidInValues' => $includeUidInValues,
         ];
         $resultArray['requireJsModules'][] = ['TYPO3/CMS/Backend/FormEngine/Element/SlugElement' => '
             function(SlugElement) {
@@ -220,12 +229,17 @@ class InputSlugElement extends AbstractFormElement
      */
     protected function getPrefix(SiteInterface $site, int $requestLanguageId = 0): string
     {
-        $language = ($requestLanguageId < 0) ? $site->getDefaultLanguage() : $site->getLanguageById($requestLanguageId);
-        $base = $language->getBase();
-        $baseUrl = (string)$base;
-        $baseUrl = rtrim($baseUrl, '/');
-        if (!empty($baseUrl) && empty($base->getScheme()) && $base->getHost() !== '') {
-            $baseUrl = 'http:' . $baseUrl;
+        try {
+            $language = ($requestLanguageId < 0) ? $site->getDefaultLanguage() : $site->getLanguageById($requestLanguageId);
+            $base = $language->getBase();
+            $baseUrl = (string)$base;
+            $baseUrl = rtrim($baseUrl, '/');
+            if (!empty($baseUrl) && empty($base->getScheme()) && $base->getHost() !== '') {
+                $baseUrl = 'http:' . $baseUrl;
+            }
+        } catch (\InvalidArgumentException $e) {
+            // No site / language found
+            $baseUrl = '';
         }
         return $baseUrl;
     }

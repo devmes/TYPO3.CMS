@@ -22,9 +22,10 @@ define([
   'TYPO3/CMS/Backend/Severity',
   'TYPO3/CMS/Backend/Modal',
   'TYPO3/CMS/Backend/Wizard',
+  'TYPO3/CMS/Backend/Storage/Persistent',
   'nprogress',
   'TYPO3/CMS/Backend/jquery.clearable'
-], function($, Workspaces, Tooltip, Severity, Modal, Wizard, NProgress) {
+], function($, Workspaces, Tooltip, Severity, Modal, Wizard, Persistent, NProgress) {
   'use strict';
 
   var Backend = {
@@ -46,7 +47,6 @@ define([
       pagination: '#workspace-pagination'
     },
     settings: {
-      depth: TYPO3.settings.Workspaces.depth,
       dir: 'ASC',
       id: TYPO3.settings.Workspaces.id,
       language: TYPO3.settings.Workspaces.language,
@@ -69,11 +69,16 @@ define([
   };
 
   Backend.initialize = function() {
+    var persistedDepth;
     Backend.getElements();
     Backend.registerEvents();
 
-    if (TYPO3.settings.Workspaces.depth > 0) {
-      Backend.elements.$depthSelector.val(TYPO3.settings.Workspaces.depth);
+    if (Persistent.isset('Workspaces.Module.depth')) {
+      persistedDepth = Persistent.get('Workspaces.Module.depth');
+      Backend.elements.$depthSelector.val(persistedDepth);
+      Backend.settings.depth = persistedDepth;
+    } else {
+      Backend.settings.depth = TYPO3.settings.Workspaces.depth;
     }
 
     Backend.loadWorkspaceComponents();
@@ -156,11 +161,11 @@ define([
       window.location.href = newUrl;
     }).on('click', '[data-action="version"]', function(e) {
       var $tr = $(e.target).closest('tr');
-      if ($tr.data('table') === 'pages') {
-        top.loadEditId($tr.data('t3ver_oid'));
-      } else {
-        top.loadEditId($tr.data('pid'));
-      }
+      var recordUidField = $tr.data('table') === 'pages' ? 't3ver_oid' : 'pid';
+      var recordUid = $tr.data(recordUidField);
+      window.location.href = top.TYPO3.configuration.pageModuleUrl
+        + '&id=' + recordUid
+        + '&returnUrl=' + encodeURIComponent(window.location.href);
     }).on('click', '[data-action="remove"]', Backend.confirmDeleteRecordFromWorkspace
     ).on('click', '[data-action="expand"]', function(e) {
       var $me = $(this),
@@ -174,6 +179,13 @@ define([
       }
 
       $me.html(Backend.getPreRenderedIcon(iconIdentifier));
+    });
+    $(window.top.document).on('click', '.t3js-workspace-recipients-selectall', function(e) {
+      e.preventDefault();
+      $('.t3js-workspace-recipient', window.top.document).not(':disabled').prop('checked', true);
+    }).on('click', '.t3js-workspace-recipients-deselectall', function(e) {
+      e.preventDefault();
+      $('.t3js-workspace-recipient', window.top.document).not(':disabled').prop('checked', false);
     });
 
     Backend.elements.$searchForm.on('submit', function(e) {
@@ -210,9 +222,9 @@ define([
 
     // Listen for depth changes
     Backend.elements.$depthSelector.on('change', function(e) {
-      var $me = $(this);
-      Backend.settings.depth = $me.val();
-
+      var depth = $(this).val();
+      Persistent.set('Workspaces.Module.depth', depth);
+      Backend.settings.depth = depth;
       Backend.getWorkspaceInfos();
     });
 
@@ -417,7 +429,9 @@ define([
       Workspaces.generateRemotePayload('getWorkspaceInfos', Backend.settings),
       Workspaces.generateRemotePayload('getStageActions', {}),
       Workspaces.generateRemoteMassActionsPayload('getMassStageActions', {}),
-      Workspaces.generateRemotePayload('getSystemLanguages', {})
+      Workspaces.generateRemotePayload('getSystemLanguages', {
+        pageUid: Backend.elements.$container.data('pageUid')
+      })
     ]).done(function(response) {
       Backend.elements.$depthSelector.prop('disabled', false);
 
@@ -513,11 +527,7 @@ define([
           'data-toggle': 'tooltip',
           title: TYPO3.lang['tooltip.openPage']
         }).append(Backend.getPreRenderedIcon('actions-version-page-open')),
-        Backend.getAction(item.allowedAction_delete, 'remove', 'actions-version-document-remove').attr('title', TYPO3.lang['tooltip.discardVersion']),
-        $('<label />', {class: 'btn btn-default btn-checkbox'}).append(
-          $('<input />', {type: 'checkbox'}),
-          $('<span />', {class: 't3-icon fa'})
-        )
+        Backend.getAction(item.allowedAction_delete, 'remove', 'actions-version-document-remove').attr('title', TYPO3.lang['tooltip.discardVersion'])
       );
 
       if (item.integrity.messages !== '') {
@@ -533,10 +543,15 @@ define([
         Backend.latestPath = item.path_Workspace;
         Backend.elements.$tableBody.append(
           $('<tr />').append(
+            $('<th />'),
             $('<th />', {colspan: 6}).text(Backend.latestPath)
           )
         );
       }
+      var $checkbox = $('<label />', {class: 'btn btn-default btn-checkbox'}).append(
+        $('<input />', {type: 'checkbox'}),
+        $('<span />', {class: 't3-icon fa'})
+      );
 
       var rowConfiguration = {
         'data-uid': item.uid,
@@ -556,6 +571,7 @@ define([
 
       Backend.elements.$tableBody.append(
         $('<tr />', rowConfiguration).append(
+          $('<td />').html($checkbox),
           $('<td />', {
             class: 't3js-title-workspace',
             style: item.Workspaces_CollectionLevel > 0 ? 'padding-left: ' + Backend.indentationPadding * item.Workspaces_CollectionLevel + 'px' : ''
@@ -771,12 +787,14 @@ define([
         }
       });
 
-      Modal.show(
-        TYPO3.lang['window.recordInformation'].replace('{0}', $.trim($tr.find('.t3js-title-live').text())),
-        $content,
-        Severity.info,
-        modalButtons
-      );
+      Modal.advanced({
+        type: Modal.default,
+        title: TYPO3.lang['window.recordInformation'].replace('{0}', $.trim($tr.find('.t3js-title-live').text())),
+        content: $content,
+        severity: Severity.info,
+        buttons: modalButtons,
+        size: 'medium'
+      });
     });
   };
 

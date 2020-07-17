@@ -15,6 +15,7 @@ namespace TYPO3\CMS\Backend\Tree\Repository;
  * The TYPO3 project - inspiring people to share!
  */
 
+use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
 use TYPO3\CMS\Core\Database\Query\Restriction\WorkspaceRestriction;
@@ -73,6 +74,8 @@ class PageTreeRepository
         'shortcut_mode',
         'mount_pid_ol',
         'url',
+        'sys_language_uid',
+        'l10n_parent',
     ];
 
     /**
@@ -119,9 +122,9 @@ class PageTreeRepository
      * @param callable $callback a callback to be used to check for permissions and filter out pages not to be included.
      * @return array
      */
-    public function getTree(int $entryPoint, callable $callback = null): array
+    public function getTree(int $entryPoint, callable $callback = null, array $dbMounts = []): array
     {
-        $this->fetchAllPages();
+        $this->fetchAllPages($dbMounts);
         if ($entryPoint === 0) {
             $tree = $this->fullPageTree;
         } else {
@@ -144,7 +147,7 @@ class PageTreeRepository
         if (!isset($tree['_children'])) {
             return;
         }
-        foreach ($tree['_children'] as $k => $childPage) {
+        foreach ($tree['_children'] as $k => &$childPage) {
             if (!call_user_func_array($callback, [$childPage])) {
                 unset($tree['_children'][$k]);
                 continue;
@@ -158,7 +161,7 @@ class PageTreeRepository
      *
      * @return array the full page tree of the whole installation
      */
-    protected function fetchAllPages(): array
+    protected function fetchAllPages($dbMounts): array
     {
         if (!empty($this->fullPageTree)) {
             return $this->fullPageTree;
@@ -185,6 +188,19 @@ class PageTreeRepository
             )
             ->execute()
             ->fetchAll();
+
+        $ids = array_column($pageRecords, 'uid');
+        foreach ($dbMounts as $mount) {
+            $entryPointRootLine = BackendUtility::BEgetRootLine($mount, '', false, $this->fields);
+            foreach ($entryPointRootLine as $page) {
+                $pageId = (int)$page['uid'];
+                if (in_array($pageId, $ids) || $pageId === 0) {
+                    continue;
+                }
+                $pageRecords[] = $page;
+                $ids[] = $pageId;
+            }
+        }
 
         $livePagePids = [];
         $movePlaceholderData = [];

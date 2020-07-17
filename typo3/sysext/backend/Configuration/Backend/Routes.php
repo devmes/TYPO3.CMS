@@ -23,6 +23,7 @@ return [
     // Main backend rendering setup (previously called backend.php) for the TYPO3 Backend
     'main' => [
         'path' => '/main',
+        'referrer' => 'required,refresh-always',
         'target' => Controller\BackendController::class . '::mainAction'
     ],
 

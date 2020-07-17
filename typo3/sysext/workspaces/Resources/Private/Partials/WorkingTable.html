@@ -14,7 +14,7 @@
 	<!-- Tab panes -->
 	<div class="tab-content">
 		<div role="tabpanel" class="tab-pane active">
-			<div class="form-section" id="workspace-panel">
+			<div class="form-section" id="workspace-panel" data-page-uid="{pageUid}">
 				<form id="workspace-settings-form" class="form-inline form-inline-spaced">
 					<div class="form-group">
 						<select name="depth" class="form-control" disabled>
@@ -57,14 +57,13 @@
 					<table class="table table-striped">
 						<thead>
 						<tr>
+							<th><button type="button" class="btn btn-default t3js-toggle-all"><core:icon identifier="actions-document-select" /></span></button></th>
 							<th><f:translate key="column.wsTitle" /></th>
 							<th><f:translate key="column.liveTitle" /></th>
 							<th><f:translate key="column.stage" /></th>
 							<th><f:translate key="column.integrity" /></th>
 							<th><core:icon identifier="flags-multiple" size="small" /></th>
-							<th class="text-right">
-								<button type="button" class="btn btn-default t3js-toggle-all"><core:icon identifier="actions-document-select" /></span></button>
-							</th>
+							<th></th>
 						</tr>
 						</thead>
 						<tbody>

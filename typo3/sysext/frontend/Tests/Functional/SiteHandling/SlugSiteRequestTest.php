@@ -17,6 +17,7 @@ namespace TYPO3\CMS\Frontend\Tests\Functional\SiteHandling;
 
 use TYPO3\CMS\Core\Core\Bootstrap;
 use TYPO3\CMS\Core\Error\Http\PageNotFoundException;
+use TYPO3\CMS\Core\Utility\PermutationUtility;
 use TYPO3\TestingFramework\Core\Functional\Framework\DataHandling\Scenario\DataHandlerFactory;
 use TYPO3\TestingFramework\Core\Functional\Framework\DataHandling\Scenario\DataHandlerWriter;
 use TYPO3\TestingFramework\Core\Functional\Framework\Frontend\InternalRequest;
@@ -103,6 +104,7 @@ class SlugSiteRequestTest extends AbstractTestCase
         $domainPaths = [
             'https://website.local/',
             'https://website.local/?',
+            'https://website.local//',
         ];
 
         return $this->wrapInArray(
@@ -142,7 +144,7 @@ class SlugSiteRequestTest extends AbstractTestCase
         $domainPaths = [
             'https://website.local/',
             'https://website.local/?',
-            'https://website.local/welcome',
+            'https://website.local//',
         ];
 
         return $this->wrapInArray(
@@ -273,9 +275,6 @@ class SlugSiteRequestTest extends AbstractTestCase
             $this->buildErrorHandlingConfiguration('Fluid', [404])
         );
 
-        $expectedStatusCode = 307;
-        $expectedHeaders = ['location' => ['https://website.local/en-en/']];
-
         $uri = 'https://website.local/any/invalid/slug';
         $response = $this->executeFrontendRequest(
             new InternalRequest($uri),
@@ -283,19 +282,15 @@ class SlugSiteRequestTest extends AbstractTestCase
         );
 
         static::assertSame(
-            $expectedStatusCode,
+            404,
             $response->getStatusCode()
         );
-        static::assertSame(
-            $expectedHeaders,
-            $response->getHeaders()
+        static::assertStringContainsString(
+            'message: The requested page does not exist',
+            (string)$response->getBody()
         );
-        // @todo Expected page not found response (404) instead
-        // static::assertContains(
-        //     'message: The requested page does not exist',
-        //    (string)$response->getBody()
-        // );
     }
+
     /**
      * @test
      */
@@ -322,6 +317,36 @@ class SlugSiteRequestTest extends AbstractTestCase
         );
         static::assertContains(
             'message: The requested page does not exist',
+            (string)$response->getBody()
+        );
+    }
+
+    /**
+     * @test
+     */
+    public function unconfiguredTypeNumResultsIn404Error()
+    {
+        $this->writeSiteConfiguration(
+            'website-local',
+            $this->buildSiteConfiguration(1000, 'https://website.local/'),
+            [
+                $this->buildDefaultLanguageConfiguration('EN', '/en-en/')
+            ],
+            $this->buildErrorHandlingConfiguration('Fluid', [404])
+        );
+
+        $uri = 'https://website.local/en-en/?type=13';
+        $response = $this->executeFrontendRequest(
+            new InternalRequest($uri),
+            $this->internalRequestContext
+        );
+
+        self::assertSame(
+            404,
+            $response->getStatusCode()
+        );
+        self::assertStringContainsString(
+            'message: The page is not configured',
             (string)$response->getBody()
         );
     }
@@ -711,7 +736,7 @@ class SlugSiteRequestTest extends AbstractTestCase
 
         return $this->wrapInArray(
             $this->keysFromValues(
-                $this->meltStrings([$domainPaths, $queries, $customQueries])
+                PermutationUtility::meltStringItems([$domainPaths, $queries, $customQueries])
             )
         );
     }
@@ -751,7 +776,7 @@ class SlugSiteRequestTest extends AbstractTestCase
             $this->internalRequestContext->withMergedGlobalSettings([
                 'TYPO3_CONF_VARS' => [
                     'FE' => [
-                        'pageNotFound_handling' => 'READFILE:typo3/sysext/frontend/Tests/Functional/SiteHandling/Fixtures/PageError.txt',
+                        'pageNotFound_handling' => 'READFILE:typo3/sysext/core/Tests/Functional/Fixtures/Frontend/PageError.txt',
                     ]
                 ]
             ])
@@ -890,7 +915,7 @@ class SlugSiteRequestTest extends AbstractTestCase
 
         $dataSet = $this->wrapInArray(
             $this->keysFromValues(
-                $this->meltStrings([$domainPaths, $queries, $customQueries])
+                PermutationUtility::meltStringItems([$domainPaths, $queries, $customQueries])
             )
         );
 

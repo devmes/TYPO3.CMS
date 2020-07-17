@@ -52,23 +52,31 @@ class TableList extends AbstractNode
         $allowed = GeneralUtility::trimExplode(',', $config['allowed'], true);
         $allowedTablesHtml = [];
         foreach ($allowed as $tableName) {
-            if ($allowed === '*') {
+            if ($tableName === '*') {
                 $label = $languageService->sL('LLL:EXT:core/Resources/Private/Language/locallang_core.xlf:labels.allTables');
                 $allowedTablesHtml[] = '<span>';
                 $allowedTablesHtml[] =  htmlspecialchars($label);
                 $allowedTablesHtml[] = '</span>';
             } else {
                 $label = $languageService->sL($GLOBALS['TCA'][$tableName]['ctrl']['title']);
-                $onClick = [];
-                $onClick[] = 'setFormValueOpenBrowser(';
-                $onClick[] =    '\'db\',';
-                $onClick[] =    GeneralUtility::quoteJSvalue($itemName . '|||' . $tableName);
-                $onClick[] = ');';
-                $onClick[] = 'return false;';
-                $allowedTablesHtml[] = '<a href="#" onClick="' . htmlspecialchars(implode('', $onClick)) . '" class="btn btn-default">';
-                $allowedTablesHtml[] =  $iconFactory->getIconForRecord($tableName, [], Icon::SIZE_SMALL)->render();
-                $allowedTablesHtml[] =  htmlspecialchars($label);
-                $allowedTablesHtml[] = '</a>';
+                $icon = $iconFactory->getIconForRecord($tableName, [], Icon::SIZE_SMALL)->render();
+                if ((bool)($config['fieldControl']['elementBrowser']['disabled'] ?? false)) {
+                    $allowedTablesHtml[] = '<span class="tablelist-item-nolink">';
+                    $allowedTablesHtml[] =  $icon;
+                    $allowedTablesHtml[] =  htmlspecialchars($label);
+                    $allowedTablesHtml[] = '</span>';
+                } else {
+                    $onClick = [];
+                    $onClick[] = 'setFormValueOpenBrowser(';
+                    $onClick[] =    '\'db\',';
+                    $onClick[] =    GeneralUtility::quoteJSvalue($itemName . '|||' . $tableName);
+                    $onClick[] = ');';
+                    $onClick[] = 'return false;';
+                    $allowedTablesHtml[] = '<a href="#" onClick="' . htmlspecialchars(implode('', $onClick)) . '" class="btn btn-default">';
+                    $allowedTablesHtml[] =  $icon;
+                    $allowedTablesHtml[] =  htmlspecialchars($label);
+                    $allowedTablesHtml[] = '</a>';
+                }
             }
         }
 

@@ -16,6 +16,17 @@ namespace TYPO3\CMS\Frontend\Tests\Functional\SiteHandling;
  */
 
 use TYPO3\CMS\Core\Core\Bootstrap;
+use TYPO3\CMS\Frontend\Tests\Functional\SiteHandling\Framework\Builder\ApplicableConjunction;
+use TYPO3\CMS\Frontend\Tests\Functional\SiteHandling\Framework\Builder\AspectDeclaration;
+use TYPO3\CMS\Frontend\Tests\Functional\SiteHandling\Framework\Builder\Builder;
+use TYPO3\CMS\Frontend\Tests\Functional\SiteHandling\Framework\Builder\EnhancerDeclaration;
+use TYPO3\CMS\Frontend\Tests\Functional\SiteHandling\Framework\Builder\LanguageContext;
+use TYPO3\CMS\Frontend\Tests\Functional\SiteHandling\Framework\Builder\Permutation;
+use TYPO3\CMS\Frontend\Tests\Functional\SiteHandling\Framework\Builder\TestSet;
+use TYPO3\CMS\Frontend\Tests\Functional\SiteHandling\Framework\Builder\VariableItem;
+use TYPO3\CMS\Frontend\Tests\Functional\SiteHandling\Framework\Builder\Variables;
+use TYPO3\CMS\Frontend\Tests\Functional\SiteHandling\Framework\Builder\VariablesContext;
+use TYPO3\CMS\Frontend\Tests\Functional\SiteHandling\Framework\Builder\VariableValue;
 use TYPO3\TestingFramework\Core\Functional\Framework\DataHandling\Scenario\DataHandlerFactory;
 use TYPO3\TestingFramework\Core\Functional\Framework\DataHandling\Scenario\DataHandlerWriter;
 use TYPO3\TestingFramework\Core\Functional\Framework\Frontend\InternalRequest;
@@ -66,6 +77,16 @@ class EnhancerLinkGeneratorTest extends AbstractTestCase
             ]
         );
 
+        $this->writeSiteConfiguration(
+            'archive-acme-com',
+            $this->buildSiteConfiguration(3000, 'https://archive.acme.com/'),
+            [
+                $this->buildDefaultLanguageConfiguration('EN', '/'),
+                $this->buildLanguageConfiguration('FR', 'https://archive.acme.com/fr/', ['EN']),
+                $this->buildLanguageConfiguration('FR-CA', 'https://archive.acme.com/ca/', ['FR', 'EN'])
+            ]
+        );
+
         $this->withDatabaseSnapshot(function () {
             $this->setUpDatabase();
         });
@@ -103,171 +124,97 @@ class EnhancerLinkGeneratorTest extends AbstractTestCase
     }
 
     /**
-     * @param array $aspect
-     * @param array $languages
-     * @param array $enhancers
-     * @param string $variableName
-     * @param array $templateOptions
-     * @param array $pageTypeSettings
+     * @param string|TestSet|null $parentSet
      * @return array
      */
-    protected function createDataSet(
-        array $aspect,
-        array $languages,
-        array $enhancers,
-        string $variableName = 'value',
-        array $templateOptions = [],
-        array $pageTypeSettings
-    ): array {
-        $dataSet = [];
-        foreach ($enhancers as $enhancer) {
-            foreach ($languages as $languageId => $expectation) {
-                $dataSet[] = [
-                    array_merge(
-                        $enhancer['enhancer'],
-                        ['aspects' => [$variableName => $aspect]]
+    public function localeModifierDataProvider($parentSet = null): array
+    {
+        $builder = Builder::create();
+        // variables (applied when invoking expectations)
+        $variables = Variables::create()->define([
+            'value' => 100,
+            'routePrefix' => '{enhance_name}',
+            'aspectName' => 'enhance_name',
+        ]);
+        return Permutation::create($variables)
+            ->withTargets(
+                TestSet::create($parentSet)
+                    ->withMergedApplicables(LanguageContext::create(0))
+                    ->withTargetPageId(1100)
+                    ->withUrl(
+                        VariableValue::create(
+                            'https://acme.us/welcome/enhance/[[value]][[pathSuffix]]?cHash=',
+                            Variables::create(['pathSuffix' => ''])
+                        )
                     ),
-                    $enhancer['parameters'],
-                    $languageId,
-                    $expectation,
-                    $pageTypeSettings,
-                ];
-            }
-        }
-        $templatePrefix = isset($templateOptions['prefix']) ? $templateOptions['prefix'] : '';
-        $templateSuffix = isset($templateOptions['suffix']) ? $templateOptions['suffix'] : '';
-        return $this->keysFromTemplate(
-            $dataSet,
-            $templatePrefix . 'enhancer:%1$s, lang:%3$d' . $templateSuffix,
-            function (array $items) {
-                array_splice(
-                    $items,
-                    0,
-                    1,
-                    $items[0]['type']
-                );
-                return $items;
-            }
-        );
-    }
-
-    /**
-     * @param array $options
-     * @return array
-     */
-    protected function getEnhancers(array $options = []): array
-    {
-        $options = array_merge(
-            ['name' => 'enhance', 'value' => 100, 'additionalParameters' => ''],
-            $options
-        );
-        return [
-            [
-                'parameters' => sprintf('&value=%s%s', $options['value'], $options['additionalParameters']),
-                'enhancer' => [
-                    'type' => 'Simple',
-                    'routePath' => sprintf('/%s/{value}', $options['name']),
-                    '_arguments' => [],
-                ],
-            ],
-            [
-                'parameters' => sprintf('&testing[value]=%s%s', $options['value'], $options['additionalParameters']),
-                'enhancer' => [
-                    'type' => 'Plugin',
-                    'routePath' => sprintf('/%s/{value}', $options['name']),
-                    'namespace' => 'testing',
-                    '_arguments' => [],
-                ],
-            ],
-            [
-                'parameters' => sprintf(
-                    '&tx_testing_link[value]=%s&tx_testing_link[controller]=Link&tx_testing_link[action]=index%s',
-                    $options['value'],
-                    $options['additionalParameters']
-                ),
-                'enhancer' => [
-                    'type' => 'Extbase',
-                    'routes' => [
-                        [
-                            'routePath' => sprintf('/%s/{value}', $options['name']),
-                            '_controller' => 'Link::index',
-                            '_arguments' => [],
+                TestSet::create($parentSet)
+                    ->withMergedApplicables(LanguageContext::create(1))
+                    ->withTargetPageId(1100)
+                    ->withUrl(
+                        VariableValue::create(
+                            'https://acme.fr/bienvenue/augmenter/[[value]][[pathSuffix]]?cHash=',
+                            Variables::create(['pathSuffix' => ''])
+                        )
+                    ),
+                TestSet::create($parentSet)
+                    ->withMergedApplicables(LanguageContext::create(0))
+                    ->withTargetPageId(3000)
+                    ->withUrl(
+                        VariableValue::create(
+                            'https://archive.acme.com/enhance/[[value]][[pathSuffix]]?cHash=',
+                            Variables::create(['pathSuffix' => ''])
+                        )
+                    ),
+                TestSet::create($parentSet)
+                    ->withMergedApplicables(LanguageContext::create(1))
+                    ->withTargetPageId(3000)
+                    ->withUrl(
+                        VariableValue::create(
+                            'https://archive.acme.com/fr/augmenter/[[value]][[pathSuffix]]?cHash=',
+                            Variables::create(['pathSuffix' => ''])
+                        )
+                    )
+            )
+            ->withApplicableItems($builder->declareEnhancers())
+            ->withApplicableSet(
+                AspectDeclaration::create('LocaleModifier')->withConfiguration([
+                    VariableItem::create('aspectName', [
+                        'type' => 'LocaleModifier',
+                        'default' => 'enhance',
+                        'localeMap' => [
+                            [
+                                'locale' => 'fr_FR',
+                                'value' => 'augmenter'
+                            ]
                         ],
-                    ],
-                    'extension' => 'testing',
-                    'plugin' => 'link',
-                ],
-            ],
-        ];
+                    ])
+                ])
+            )
+            ->permute()
+            ->getTargetsForDataProvider();
     }
 
     /**
-     * @return array
-     */
-    protected function createPageTypeDecorator(): array
-    {
-        return [
-            'type' => 'PageType',
-            'default' => '.html',
-            'index' => 'index',
-            'map' => [
-                '.html' =>  0,
-                'menu.json' =>  10,
-            ]
-        ];
-    }
-
-    /**
-     * @param string|array|null $options
-     * @return array
-     */
-    public function localeModifierDataProvider($options = null): array
-    {
-        if (!is_array($options)) {
-            $options = [];
-        }
-        $aspect = [
-            'type' => 'LocaleModifier',
-            'default' => 'enhance',
-            'localeMap' => [
-                [
-                    'locale' => 'fr_FR',
-                    'value' => 'augmenter'
-                ]
-            ],
-        ];
-
-        $languages = [
-            '0' => sprintf('https://acme.us/welcome/enhance/100%s?cHash=', $options['pathSuffix'] ?? ''),
-            '1' => sprintf('https://acme.fr/bienvenue/augmenter/100%s?cHash=', $options['pathSuffix'] ?? ''),
-        ];
-
-        return $this->createDataSet(
-            $aspect,
-            $languages,
-            $this->getEnhancers([
-                'name' => '{enhance_name}',
-                'additionalParameters' => $options['additionalParameters'] ?? ''
-            ]),
-            'enhance_name',
-            ['prefix' => 'localeModifier/'],
-            array_key_exists('pageTypeSettings', $options) ? $options['pageTypeSettings'] : []
-        );
-    }
-
-    /**
-     * @param array $enhancer
-     * @param string $additionalParameters
-     * @param int $targetLanguageId
-     * @param string $expectation
+     * @param TestSet $testSet
      *
      * @test
      * @dataProvider localeModifierDataProvider
      */
-    public function localeModifierIsApplied(array $enhancer, string $additionalParameters, int $targetLanguageId, string $expectation)
+    public function localeModifierIsApplied(TestSet $testSet): void
     {
+        $builder = Builder::create();
+        $enhancerConfiguration = $builder->compileEnhancerConfiguration($testSet);
+        $additionalParameters = $builder->compileGenerateParameters($testSet);
+        /** @var LanguageContext $languageContext */
+        $languageContext = $testSet->getSingleApplicable(LanguageContext::class);
+        $targetLanguageId = $languageContext->getLanguageId();
+        $expectation = $builder->compileUrl($testSet);
+
         $this->mergeSiteConfiguration('acme-com', [
-            'routeEnhancers' => ['Enhancer' => $enhancer]
+            'routeEnhancers' => ['Enhancer' => $enhancerConfiguration]
+        ]);
+        $this->mergeSiteConfiguration('archive-acme-com', [
+            'routeEnhancers' => ['Enhancer' => $enhancerConfiguration]
         ]);
 
         $response = $this->executeFrontendRequest(
@@ -275,7 +222,7 @@ class EnhancerLinkGeneratorTest extends AbstractTestCase
                 ->withPageId(1100)
                 ->withInstructions([
                     $this->createTypoLinkUrlInstruction([
-                        'parameter' => 1100,
+                        'parameter' => $testSet->getTargetPageId(),
                         'language' => $targetLanguageId,
                         'additionalParams' => $additionalParameters,
                         'forceAbsoluteUrl' => 1,
@@ -288,52 +235,72 @@ class EnhancerLinkGeneratorTest extends AbstractTestCase
     }
 
     /**
-     * @param string|array|null $options
+     * @param string|TestSet|null $parentSet
      * @return array
      */
-    public function persistedAliasMapperDataProvider($options = null): array
+    public function persistedAliasMapperDataProvider($parentSet = null): array
     {
-        if (!is_array($options)) {
-            $options = [];
-        }
-        $aspect = [
-            'type' => 'PersistedAliasMapper',
-            'tableName' => 'pages',
-            'routeFieldName' => 'slug',
-            'routeValuePrefix' => '/',
-        ];
-
-        $languages = [
-            '0' => sprintf('https://acme.us/welcome/enhance/welcome%s', $options['pathSuffix'] ?? ''),
-            '1' => sprintf('https://acme.fr/bienvenue/enhance/bienvenue%s', $options['pathSuffix'] ?? ''),
-        ];
-
-        return $this->createDataSet(
-            $aspect,
-            $languages,
-            $this->getEnhancers([
-                'value' => 1100,
-                'additionalParameters' => $options['additionalParameters'] ?? ''
-            ]),
-            'value',
-            ['prefix' => 'persistedAliasMapper/'],
-            array_key_exists('pageTypeSettings', $options) ? $options['pageTypeSettings'] : []
-        );
+        $builder = Builder::create();
+        // variables (applied when invoking expectations)
+        $variables = Variables::create()->define([
+            'value' => 1100,
+            'routePrefix' => 'enhance',
+            'aspectName' => 'value',
+        ]);
+        return Permutation::create($variables)
+            ->withTargets(
+                TestSet::create($parentSet)
+                    ->withMergedApplicables(LanguageContext::create(0))
+                    ->withTargetPageId(1100)
+                    ->withUrl(
+                        VariableValue::create(
+                            'https://acme.us/welcome/enhance/welcome[[pathSuffix]]',
+                            Variables::create(['pathSuffix' => ''])
+                        )
+                    ),
+                TestSet::create($parentSet)
+                    ->withMergedApplicables(LanguageContext::create(1))
+                    ->withTargetPageId(1100)
+                    ->withUrl(
+                        VariableValue::create(
+                            'https://acme.fr/bienvenue/enhance/bienvenue[[pathSuffix]]',
+                            Variables::create(['pathSuffix' => ''])
+                        )
+                    )
+            )
+            ->withApplicableItems($builder->declareEnhancers())
+            ->withApplicableSet(
+                AspectDeclaration::create('PersistedAliasMapper')->withConfiguration([
+                    VariableItem::create('aspectName', [
+                        'type' => 'PersistedAliasMapper',
+                        'tableName' => 'pages',
+                        'routeFieldName' => 'slug',
+                        'routeValuePrefix' => '/',
+                    ])
+                ])
+            )
+            ->permute()
+            ->getTargetsForDataProvider();
     }
 
     /**
-     * @param array $enhancer
-     * @param string $additionalParameters
-     * @param int $targetLanguageId
-     * @param string $expectation
+     * @param TestSet $testSet
      *
      * @test
      * @dataProvider persistedAliasMapperDataProvider
      */
-    public function persistedAliasMapperIsApplied(array $enhancer, string $additionalParameters, int $targetLanguageId, string $expectation)
+    public function persistedAliasMapperIsApplied(TestSet $testSet): void
     {
+        $builder = Builder::create();
+        $enhancerConfiguration = $builder->compileEnhancerConfiguration($testSet);
+        $additionalParameters = $builder->compileGenerateParameters($testSet);
+        /** @var LanguageContext $languageContext */
+        $languageContext = $testSet->getSingleApplicable(LanguageContext::class);
+        $targetLanguageId = $languageContext->getLanguageId();
+        $expectation = $builder->compileUrl($testSet);
+
         $this->mergeSiteConfiguration('acme-com', [
-            'routeEnhancers' => ['Enhancer' => $enhancer]
+            'routeEnhancers' => ['Enhancer' => $enhancerConfiguration]
         ]);
 
         $response = $this->executeFrontendRequest(
@@ -354,52 +321,93 @@ class EnhancerLinkGeneratorTest extends AbstractTestCase
     }
 
     /**
-     * @param string|array|null $options
+     * @param string|TestSet|null $parentSet
      * @return array
      */
-    public function persistedPatternMapperDataProvider($options = null): array
+    public function persistedPatternMapperDataProvider($parentSet = null): array
     {
-        if (!is_array($options)) {
-            $options = [];
-        }
-        $aspect = [
-            'type' => 'PersistedPatternMapper',
-            'tableName' => 'pages',
-            'routeFieldPattern' => '^(?P<subtitle>.+)-(?P<uid>\d+)$',
-            'routeFieldResult' => '{subtitle}-{uid}',
-        ];
-
-        $languages = [
-            '0' => sprintf('https://acme.us/welcome/enhance/hello-and-welcome-1100%s', $options['pathSuffix'] ?? ''),
-            '1' => sprintf('https://acme.fr/bienvenue/enhance/salut-et-bienvenue-1100%s', $options['pathSuffix'] ?? ''),
-        ];
-
-        return $this->createDataSet(
-            $aspect,
-            $languages,
-            $this->getEnhancers([
-                'value' => 1100,
-                'additionalParameters' => $options['additionalParameters'] ?? ''
-            ]),
-            'value',
-            ['prefix' => 'persistedPatternMapper/'],
-            array_key_exists('pageTypeSettings', $options) ? $options['pageTypeSettings'] : []
-        );
+        $builder = Builder::create();
+        // variables (applied when invoking expectations)
+        $variables = Variables::create()->define([
+            'value' => 1100,
+            'routePrefix' => 'enhance',
+            'aspectName' => 'value',
+        ]);
+        return Permutation::create($variables)
+            ->withTargets(
+                TestSet::create($parentSet)
+                    ->withMergedApplicables(LanguageContext::create(0))
+                    ->withTargetPageId(1100)
+                    ->withUrl(
+                        VariableValue::create(
+                            'https://acme.us/welcome/enhance/hello-and-welcome-[[value]][[pathSuffix]]',
+                            Variables::create(['pathSuffix' => ''])
+                        )
+                    ),
+                TestSet::create($parentSet)
+                    ->withMergedApplicables(LanguageContext::create(1))
+                    ->withTargetPageId(1100)
+                    ->withUrl(
+                        VariableValue::create(
+                            'https://acme.fr/bienvenue/enhance/salut-et-bienvenue-[[value]][[pathSuffix]]',
+                            Variables::create(['pathSuffix' => ''])
+                        )
+                    ),
+                TestSet::create($parentSet)
+                    ->withMergedApplicables(LanguageContext::create(0))
+                    ->withTargetPageId(3000)
+                    ->withUrl(
+                        VariableValue::create(
+                            'https://archive.acme.com/enhance/hello-and-welcome-[[value]][[pathSuffix]]',
+                            Variables::create(['pathSuffix' => ''])
+                        )
+                    ),
+                TestSet::create($parentSet)
+                    ->withMergedApplicables(LanguageContext::create(1))
+                    ->withTargetPageId(3000)
+                    ->withUrl(
+                        VariableValue::create(
+                            'https://archive.acme.com/fr/enhance/salut-et-bienvenue-[[value]][[pathSuffix]]',
+                            Variables::create(['pathSuffix' => ''])
+                        )
+                    )
+            )
+            ->withApplicableItems($builder->declareEnhancers())
+            ->withApplicableSet(
+                AspectDeclaration::create('PersistedPatternMapper')->withConfiguration([
+                    VariableItem::create('aspectName', [
+                        'type' => 'PersistedPatternMapper',
+                        'tableName' => 'pages',
+                        'routeFieldPattern' => '^(?P<subtitle>.+)-(?P<uid>\d+)$',
+                        'routeFieldResult' => '{subtitle}-{uid}',
+                    ])
+                ])
+            )
+            ->permute()
+            ->getTargetsForDataProvider();
     }
 
     /**
-     * @param array $enhancer
-     * @param string $additionalParameters
-     * @param int $targetLanguageId
-     * @param string $expectation
+     * @param TestSet $testSet
      *
      * @test
      * @dataProvider persistedPatternMapperDataProvider
      */
-    public function persistedPatternMapperIsApplied(array $enhancer, string $additionalParameters, int $targetLanguageId, string $expectation)
+    public function persistedPatternMapperIsApplied(TestSet $testSet): void
     {
+        $builder = Builder::create();
+        $enhancerConfiguration = $builder->compileEnhancerConfiguration($testSet);
+        $additionalParameters = $builder->compileGenerateParameters($testSet);
+        /** @var LanguageContext $languageContext */
+        $languageContext = $testSet->getSingleApplicable(LanguageContext::class);
+        $targetLanguageId = $languageContext->getLanguageId();
+        $expectation = $builder->compileUrl($testSet);
+
         $this->mergeSiteConfiguration('acme-com', [
-            'routeEnhancers' => ['Enhancer' => $enhancer]
+            'routeEnhancers' => ['Enhancer' => $enhancerConfiguration]
+        ]);
+        $this->mergeSiteConfiguration('archive-acme-com', [
+            'routeEnhancers' => ['Enhancer' => $enhancerConfiguration]
         ]);
 
         $response = $this->executeFrontendRequest(
@@ -407,7 +415,7 @@ class EnhancerLinkGeneratorTest extends AbstractTestCase
                 ->withPageId(1100)
                 ->withInstructions([
                     $this->createTypoLinkUrlInstruction([
-                        'parameter' => 1100,
+                        'parameter' => $testSet->getTargetPageId(),
                         'language' => $targetLanguageId,
                         'additionalParams' => $additionalParameters,
                         'forceAbsoluteUrl' => 1,
@@ -420,59 +428,101 @@ class EnhancerLinkGeneratorTest extends AbstractTestCase
     }
 
     /**
-     * @param string|array|null $options
+     * @param string|TestSet|null $parentSet
      * @return array
      */
-    public function staticValueMapperDataProvider($options = null): array
+    public function staticValueMapperDataProvider($parentSet = null): array
     {
-        if (!is_array($options)) {
-            $options = [];
-        }
-        $aspect = [
-            'type' => 'StaticValueMapper',
-            'map' => [
-                'hundred' => 100,
-            ],
-            'localeMap' => [
-                [
-                    'locale' => 'fr_FR',
-                    'map' => [
-                        'cent' => 100,
-                    ],
-                ]
-            ],
-        ];
-
-        $languages = [
-            '0' => sprintf('https://acme.us/welcome/enhance/hundred%s', $options['pathSuffix'] ?? ''),
-            '1' => sprintf('https://acme.fr/bienvenue/enhance/cent%s', $options['pathSuffix'] ?? ''),
-        ];
-
-        return $this->createDataSet(
-            $aspect,
-            $languages,
-            $this->getEnhancers([
-                'additionalParameters' => $options['additionalParameters'] ?? ''
-            ]),
-            'value',
-            ['prefix' => 'staticValueMapper/'],
-            array_key_exists('pageTypeSettings', $options) ? $options['pageTypeSettings'] : []
-        );
+        $builder = Builder::create();
+        // variables (applied when invoking expectations)
+        $variables = Variables::create()->define([
+            'value' => 100,
+            'routePrefix' => 'enhance',
+            'aspectName' => 'value',
+        ]);
+        return Permutation::create($variables)
+            ->withTargets(
+                TestSet::create($parentSet)
+                    ->withMergedApplicables(LanguageContext::create(0))
+                    ->withTargetPageId(1100)
+                    ->withUrl(
+                        VariableValue::create(
+                            'https://acme.us/welcome/enhance/hundred[[pathSuffix]]',
+                            Variables::create(['pathSuffix' => ''])
+                        )
+                    ),
+                TestSet::create($parentSet)
+                    ->withMergedApplicables(LanguageContext::create(1))
+                    ->withTargetPageId(1100)
+                    ->withUrl(
+                        VariableValue::create(
+                            'https://acme.fr/bienvenue/enhance/cent[[pathSuffix]]',
+                            Variables::create(['pathSuffix' => ''])
+                        )
+                    ),
+                TestSet::create($parentSet)
+                    ->withMergedApplicables(LanguageContext::create(0))
+                    ->withTargetPageId(3000)
+                    ->withUrl(
+                        VariableValue::create(
+                            'https://archive.acme.com/enhance/hundred[[pathSuffix]]',
+                            Variables::create(['pathSuffix' => ''])
+                        )
+                    ),
+                TestSet::create($parentSet)
+                    ->withMergedApplicables(LanguageContext::create(1))
+                    ->withTargetPageId(3000)
+                    ->withUrl(
+                        VariableValue::create(
+                            'https://archive.acme.com/fr/enhance/cent[[pathSuffix]]',
+                            Variables::create(['pathSuffix' => ''])
+                        )
+                    )
+            )
+            ->withApplicableItems($builder->declareEnhancers())
+            ->withApplicableSet(
+                AspectDeclaration::create('StaticValueMapper')->withConfiguration([
+                    VariableItem::create('aspectName', [
+                        'type' => 'StaticValueMapper',
+                        'map' => [
+                            'hundred' => 100,
+                        ],
+                        'localeMap' => [
+                            [
+                                'locale' => 'fr_FR',
+                                'map' => [
+                                    'cent' => 100,
+                                ],
+                            ]
+                        ],
+                    ])
+                ])
+            )
+            ->permute()
+            ->getTargetsForDataProvider();
     }
 
     /**
-     * @param array $enhancer
-     * @param string $additionalParameters
-     * @param int $targetLanguageId
-     * @param string $expectation
+     * @param TestSet $testSet
      *
      * @test
      * @dataProvider staticValueMapperDataProvider
      */
-    public function staticValueMapperIsApplied(array $enhancer, string $additionalParameters, int $targetLanguageId, string $expectation)
+    public function staticValueMapperIsApplied(TestSet $testSet): void
     {
+        $builder = Builder::create();
+        $enhancerConfiguration = $builder->compileEnhancerConfiguration($testSet);
+        $additionalParameters = $builder->compileGenerateParameters($testSet);
+        /** @var LanguageContext $languageContext */
+        $languageContext = $testSet->getSingleApplicable(LanguageContext::class);
+        $targetLanguageId = $languageContext->getLanguageId();
+        $expectation = $builder->compileUrl($testSet);
+
         $this->mergeSiteConfiguration('acme-com', [
-            'routeEnhancers' => ['Enhancer' => $enhancer]
+            'routeEnhancers' => ['Enhancer' => $enhancerConfiguration]
+        ]);
+        $this->mergeSiteConfiguration('archive-acme-com', [
+            'routeEnhancers' => ['Enhancer' => $enhancerConfiguration]
         ]);
 
         $response = $this->executeFrontendRequest(
@@ -480,7 +530,7 @@ class EnhancerLinkGeneratorTest extends AbstractTestCase
                 ->withPageId(1100)
                 ->withInstructions([
                     $this->createTypoLinkUrlInstruction([
-                        'parameter' => 1100,
+                        'parameter' => $testSet->getTargetPageId(),
                         'language' => $targetLanguageId,
                         'additionalParams' => $additionalParameters,
                         'forceAbsoluteUrl' => 1,
@@ -493,61 +543,81 @@ class EnhancerLinkGeneratorTest extends AbstractTestCase
     }
 
     /**
-     * @param string|array|null $options
+     * @param string|TestSet|null $parentSet
      * @return array
      */
-    public function staticRangeMapperDataProvider($options = null): array
+    public function staticRangeMapperDataProvider($parentSet = null): array
     {
-        if (!is_array($options)) {
-            $options = [];
-        }
-        $aspect = [
-            'type' => 'StaticRangeMapper',
-            'start' => '1',
-            'end' => '100',
-        ];
+        $variableContexts = array_map(
+            function ($value) {
+                return VariablesContext::create(
+                    Variables::create(['value' => $value])
+                );
+            },
+            range(10, 100, 30)
+        );
 
-        $dataSet = [];
-        foreach (range(10, 100, 30) as $value) {
-            $languages = [
-                '0' => sprintf('https://acme.us/welcome/enhance/%s%s', $value, $options['pathSuffix'] ?? ''),
-                '1' => sprintf('https://acme.fr/bienvenue/enhance/%s%s', $value, $options['pathSuffix'] ?? ''),
-            ];
-
-            $dataSet = array_merge(
-                $dataSet,
-                $this->createDataSet(
-                    $aspect,
-                    $languages,
-                    $this->getEnhancers([
-                        'value' => $value,
-                        'additionalParameters' => $options['additionalParameters'] ?? ''
-                    ]),
-                    'value',
-                    [
-                        'prefix' => 'staticRangeMapper/',
-                        'suffix' => sprintf(', value:%d', $value),
-                    ],
-                    array_key_exists('pageTypeSettings', $options) ? $options['pageTypeSettings'] : []
-                )
-            );
-        }
-        return $dataSet;
+        $builder = Builder::create();
+        // variables (applied when invoking expectations)
+        $variables = Variables::create()->define([
+            'value' => null, // defined via VariableContext
+            'routePrefix' => 'enhance',
+            'aspectName' => 'value',
+        ]);
+        return Permutation::create($variables)
+            ->withTargets(
+                TestSet::create($parentSet)
+                    ->withMergedApplicables(LanguageContext::create(0))
+                    ->withTargetPageId(1100)
+                    ->withUrl(
+                        VariableValue::create(
+                            'https://acme.us/welcome/enhance/[[value]][[pathSuffix]]',
+                            Variables::create(['pathSuffix' => ''])
+                        )
+                    ),
+                TestSet::create($parentSet)
+                    ->withMergedApplicables(LanguageContext::create(1))
+                    ->withTargetPageId(1100)
+                    ->withUrl(
+                        VariableValue::create(
+                            'https://acme.fr/bienvenue/enhance/[[value]][[pathSuffix]]',
+                            Variables::create(['pathSuffix' => ''])
+                        )
+                    )
+            )
+            ->withApplicableItems($variableContexts)
+            ->withApplicableItems($builder->declareEnhancers())
+            ->withApplicableSet(
+                AspectDeclaration::create('StaticRangeMapper')->withConfiguration([
+                    VariableItem::create('aspectName', [
+                        'type' => 'StaticRangeMapper',
+                        'start' => '1',
+                        'end' => '100',
+                    ])
+                ])
+            )
+            ->permute()
+            ->getTargetsForDataProvider();
     }
 
     /**
-     * @param array $enhancer
-     * @param string $additionalParameters
-     * @param int $targetLanguageId
-     * @param string $expectation
+     * @param TestSet $testSet
      *
      * @test
      * @dataProvider staticRangeMapperDataProvider
      */
-    public function staticRangeMapperIsApplied(array $enhancer, string $additionalParameters, int $targetLanguageId, string $expectation)
+    public function staticRangeMapperIsApplied(TestSet $testSet): void
     {
+        $builder = Builder::create();
+        $enhancerConfiguration = $builder->compileEnhancerConfiguration($testSet);
+        $additionalParameters = $builder->compileGenerateParameters($testSet);
+        /** @var LanguageContext $languageContext */
+        $languageContext = $testSet->getSingleApplicable(LanguageContext::class);
+        $targetLanguageId = $languageContext->getLanguageId();
+        $expectation = $builder->compileUrl($testSet);
+
         $this->mergeSiteConfiguration('acme-com', [
-            'routeEnhancers' => ['Enhancer' => $enhancer]
+            'routeEnhancers' => ['Enhancer' => $enhancerConfiguration]
         ]);
 
         $response = $this->executeFrontendRequest(
@@ -555,7 +625,7 @@ class EnhancerLinkGeneratorTest extends AbstractTestCase
                 ->withPageId(1100)
                 ->withInstructions([
                     $this->createTypoLinkUrlInstruction([
-                        'parameter' => 1100,
+                        'parameter' => $testSet->getTargetPageId(),
                         'language' => $targetLanguageId,
                         'additionalParams' => $additionalParameters,
                         'forceAbsoluteUrl' => 1,
@@ -575,103 +645,434 @@ class EnhancerLinkGeneratorTest extends AbstractTestCase
      */
     public function pageTypeDecoratorIsAppliedDataProvider(): array
     {
-        $instructions = [
-            [
-                'pathSuffix' => '.html',
-                'type' => null,
-                'pageTypeSettings' => $this->createPageTypeDecorator()
-            ],
-            [
-                'pathSuffix' => '.html',
-                'type' => 0,
-                'pageTypeSettings' => $this->createPageTypeDecorator()
-            ],
-            [
-                'pathSuffix' => '/menu.json',
-                'type' => 10,
-                'pageTypeSettings' => $this->createPageTypeDecorator()
-            ],
-            [
-                'pathSuffix' => '/',
-                'type' => null,
-                'pageTypeSettings' => [
-                    'type' => 'PageType',
-                    'default' => '/',
-                    'index' => '/',
-                    'map' => [
-                        'menu.json' => 10,
-                    ]
-                ]
-            ],
-            [
-                'pathSuffix' => '/',
-                'type' => 0,
-                'pageTypeSettings' => [
-                    'type' => 'PageType',
-                    'default' => '/',
-                    'index' => '/',
-                    'map' => [
-                        'menu.json' => 10,
-                    ]
-                ]
-            ]
-        ];
-
-        $dataSet = [];
-        foreach ($instructions as $instruction) {
-            $templateSuffix = sprintf(
-                ' [%s=>%s]',
-                $instruction['pathSuffix'],
-                $instruction['type'] ?? 'null'
-            );
-            $dataProviderOptions = [
-                'pathSuffix' => $instruction['pathSuffix'],
-                'additionalParameters' => $instruction['type'] !== null
-                    ? '&type=' . $instruction['type']
-                    : '',
-                'pageTypeSettings' => $instruction['pageTypeSettings']
-            ];
-            $dataSetCandidates = array_merge(
-                $this->localeModifierDataProvider($dataProviderOptions),
-                $this->persistedAliasMapperDataProvider($dataProviderOptions),
-                $this->persistedPatternMapperDataProvider($dataProviderOptions),
-                $this->staticValueMapperDataProvider($dataProviderOptions),
-                $this->staticRangeMapperDataProvider($dataProviderOptions)
-            );
-            $dataSetCandidatesKeys = array_map(
-                function (string $dataSetCandidatesKey) use ($templateSuffix) {
-                    return $dataSetCandidatesKey . $templateSuffix;
-                },
-                array_keys($dataSetCandidates)
-            );
-            $dataSet = array_merge(
-                $dataSet,
-                array_combine($dataSetCandidatesKeys, $dataSetCandidates)
+        $testSets = [];
+        foreach (Builder::create()->declarePageTypes() as $pageTypeDeclaration) {
+            $testSet = TestSet::create()
+                ->withMergedApplicables($pageTypeDeclaration)
+                ->withVariables($pageTypeDeclaration->getVariables());
+            $testSets = array_merge(
+                $testSets,
+                $this->localeModifierDataProvider($testSet),
+                $this->persistedAliasMapperDataProvider($testSet),
+                $this->persistedPatternMapperDataProvider($testSet),
+                $this->staticValueMapperDataProvider($testSet),
+                $this->staticRangeMapperDataProvider($testSet)
             );
         }
-        return $dataSet;
+        return $testSets;
     }
 
     /**
-     * @param array $enhancer
-     * @param string $additionalParameters
-     * @param int $targetLanguageId
-     * @param string $expectation
-     * @param array $pageTypeSettings
+     * @param TestSet $testSet
      *
      * @test
      * @dataProvider pageTypeDecoratorIsAppliedDataProvider
      */
-    public function pageTypeDecoratorIsApplied(array $enhancer, string $additionalParameters, int $targetLanguageId, string $expectation, array $pageTypeSettings)
+    public function pageTypeDecoratorIsApplied(TestSet $testSet): void
     {
-        if (empty($pageTypeSettings)) {
-            $pageTypeSettings = $this->createPageTypeDecorator();
-        }
+        $builder = Builder::create();
+        $enhancerConfiguration = $builder->compileEnhancerConfiguration($testSet);
+        $pageTypeConfiguration = $builder->compilePageTypeConfiguration($testSet);
+        $additionalParameters = $builder->compileGenerateParameters($testSet);
+        /** @var LanguageContext $languageContext */
+        $languageContext = $testSet->getSingleApplicable(LanguageContext::class);
+        $targetLanguageId = $languageContext->getLanguageId();
+        $expectation = $builder->compileUrl($testSet);
 
         $this->mergeSiteConfiguration('acme-com', [
             'routeEnhancers' => [
-                'Enhancer' => $enhancer,
-                'PageType' => $pageTypeSettings
+                'Enhancer' => $enhancerConfiguration,
+                'PageType' => $pageTypeConfiguration,
+            ]
+        ]);
+
+        $this->mergeSiteConfiguration('archive-acme-com', [
+            'routeEnhancers' => [
+                'Enhancer' => $enhancerConfiguration,
+                'PageType' => $pageTypeConfiguration,
+            ]
+        ]);
+
+        $response = $this->executeFrontendRequest(
+            (new InternalRequest('https://acme.us/'))
+                ->withPageId(1100)
+                ->withInstructions([
+                    $this->createTypoLinkUrlInstruction([
+                        'parameter' => $testSet->getTargetPageId(),
+                        'language' => $targetLanguageId,
+                        'additionalParams' => $additionalParameters,
+                        'forceAbsoluteUrl' => 1,
+                    ])
+                ]),
+            $this->internalRequestContext
+        );
+
+        static::assertStringStartsWith($expectation, (string)$response->getBody());
+    }
+
+    public function routeDefaultsForSingleParameterAreConsideredDataProvider($parentSet = null): array
+    {
+        $builder = Builder::create();
+        $enhancerDeclarations = $builder->declareEnhancers();
+        // variables (applied when invoking expectations)
+        $variables = Variables::create()->define([
+            'routePrefix' => 'enhance',
+            'aspectName' => 'value',
+        ]);
+        return Permutation::create($variables)
+            ->withTargets(
+                TestSet::create($parentSet)
+                    ->withMergedApplicables(LanguageContext::create(0))
+                    ->withTargetPageId(1100)
+                    ->withUrl(
+                        VariableValue::create(
+                            'https://acme.us/welcome/enhance[[uriValue]][[pathSuffix]]',
+                            Variables::create(['pathSuffix' => '', 'uriValue' => '/hundred'])
+                        )
+                    ),
+                TestSet::create($parentSet)
+                    ->withMergedApplicables(LanguageContext::create(1))
+                    ->withTargetPageId(1100)
+                    ->withUrl(
+                        VariableValue::create(
+                            'https://acme.fr/bienvenue/enhance[[uriValue]][[pathSuffix]]',
+                            Variables::create(['pathSuffix' => '', 'uriValue' => '/cent'])
+                        )
+                    )
+            )
+            ->withApplicableSet(
+                $enhancerDeclarations['Simple'],
+                // cannot use Plugin enhancer here - won't be used if no parameters for plugin namespace are given
+                // $enhancerDeclarations['Plugin']
+                //  ->withConfiguration(['routePath' => $routePath], true),
+                $enhancerDeclarations['Extbase']
+            )
+            ->withApplicableSet(
+                EnhancerDeclaration::create('defaults.value=100')->withConfiguration([
+                    'defaults' => ['value' => 100],
+                ])
+            )
+            ->withApplicableSet(
+                AspectDeclaration::create('StaticValueMapper')->withConfiguration([
+                    VariableItem::create('aspectName', [
+                        'type' => 'StaticValueMapper',
+                        'map' => [
+                            'hundred' => 100,
+                        ],
+                        'localeMap' => [
+                            [
+                                'locale' => 'fr_FR',
+                                'map' => [
+                                    'cent' => 100,
+                                ],
+                            ]
+                        ],
+                    ])
+                ])
+            )
+            ->withApplicableSet(
+                VariablesContext::create(Variables::create([
+                    'routeParameter' => '{value}',
+                    'uriValue' => '',
+                ])),
+                VariablesContext::create(Variables::create([
+                    'routeParameter' => '{!value}',
+                ]))
+            )
+            ->withApplicableSet(
+                VariablesContext::create(Variables::create([
+                    'value' => null,
+                ])),
+                VariablesContext::create(Variables::create([
+                    'value' => 100,
+                ]))
+            )
+            ->permute()
+            ->getTargetsForDataProvider();
+    }
+
+    /**
+     * @param TestSet $testSet
+     *
+     * @test
+     * @dataProvider routeDefaultsForSingleParameterAreConsideredDataProvider
+     */
+    public function routeDefaultsForSingleParameterAreConsidered(TestSet $testSet): void
+    {
+        $this->assertGeneratedUriEquals($testSet);
+    }
+
+    public function routeDefaultsForMultipleParametersAreConsideredDataProvider($parentSet = null): array
+    {
+        $builder = Builder::create();
+        $routePath = VariableValue::create('/[[routePrefix]]/[[routeParameter]]/{additional}');
+        $enhancerDeclarations = $builder->declareEnhancers();
+        // variables (applied when invoking expectations)
+        $variables = Variables::create()->define([
+            'routePrefix' => 'enhance',
+            'aspectName' => 'value',
+        ]);
+        return Permutation::create($variables)
+            ->withTargets(
+                TestSet::create($parentSet)
+                    ->withMergedApplicables(LanguageContext::create(0))
+                    ->withTargetPageId(1100)
+                    ->withUrl(
+                        VariableValue::create(
+                            'https://acme.us/welcome/enhance/hundred/20[[pathSuffix]]',
+                            Variables::create(['pathSuffix' => ''])
+                        )
+                    ),
+                TestSet::create($parentSet)
+                    ->withMergedApplicables(LanguageContext::create(1))
+                    ->withTargetPageId(1100)
+                    ->withUrl(
+                        VariableValue::create(
+                            'https://acme.fr/bienvenue/enhance/cent/20[[pathSuffix]]',
+                            Variables::create(['pathSuffix' => ''])
+                        )
+                    )
+            )
+            ->withApplicableSet(
+                $enhancerDeclarations['Simple']
+                    ->withConfiguration(['routePath' => $routePath], true)
+                    ->withGenerateParameters(['&additional=20'], true),
+                $enhancerDeclarations['Plugin']
+                    ->withConfiguration(['routePath' => $routePath], true)
+                    ->withGenerateParameters(['&testing[additional]=20'], true),
+                $enhancerDeclarations['Extbase']
+                    ->withConfiguration(['routes' => [0 => ['routePath' => $routePath]]], true)
+                    ->withGenerateParameters(['&tx_testing_link[additional]=20'], true)
+            )
+            ->withApplicableSet(
+                EnhancerDeclaration::create('defaults.value=100')->withConfiguration([
+                    'defaults' => ['value' => 100],
+                ])
+            )
+            ->withApplicableSet(
+                AspectDeclaration::create('StaticValueMapper')->withConfiguration([
+                    VariableItem::create('aspectName', [
+                        'type' => 'StaticValueMapper',
+                        'map' => [
+                            'hundred' => 100,
+                        ],
+                        'localeMap' => [
+                            [
+                                'locale' => 'fr_FR',
+                                'map' => [
+                                    'cent' => 100,
+                                ],
+                            ]
+                        ],
+                    ])
+                ])
+            )
+            ->withApplicableSet(
+                VariablesContext::create(Variables::create([
+                    'routeParameter' => '{value}',
+                ])),
+                VariablesContext::create(Variables::create([
+                    'routeParameter' => '{!value}',
+                ]))
+            )
+            ->withApplicableSet(
+                VariablesContext::create(Variables::create([
+                    'value' => null,
+                ])),
+                VariablesContext::create(Variables::create([
+                    'value' => 100,
+                ]))
+            )
+            ->permute()
+            ->getTargetsForDataProvider();
+    }
+
+    /**
+     * @param TestSet $testSet
+     *
+     * @test
+     * @dataProvider routeDefaultsForMultipleParametersAreConsideredDataProvider
+     */
+    public function routeDefaultsForMultipleParametersAreConsidered(TestSet $testSet): void
+    {
+        $this->assertGeneratedUriEquals($testSet);
+    }
+
+    public function routeRequirementsHavingAspectsAreConsideredDataProvider($parentSet = null): array
+    {
+        $builder = Builder::create();
+        // variables (applied when invoking expectations)
+        $variables = Variables::create()->define([
+            'routePrefix' => 'enhance',
+            'aspectName' => 'value',
+            'inArguments' => 'staticArguments' // either 'dynamicArguments' or 'staticArguments'
+        ]);
+        return Permutation::create($variables)
+            ->withTargets(
+                TestSet::create($parentSet)
+                    ->withMergedApplicables(LanguageContext::create(0))
+                    ->withTargetPageId(1100)
+                    ->withUrl(
+                        VariableValue::create(
+                            'https://acme.us/welcome/enhance/[[resolveValue]][[pathSuffix]]',
+                            Variables::create(['pathSuffix' => ''])
+                        )
+                    )
+            )
+            ->withApplicableSet(
+                VariablesContext::create(Variables::create([
+                    'value' => 100,
+                    'resolveValue' => 'hundred',
+                ])),
+                VariablesContext::create(Variables::create([
+                    'value' => 1100100,
+                    'resolveValue' => 'hundred/binary',
+                ])),
+                ApplicableConjunction::create(
+                    VariablesContext::create(Variables::create([
+                        'value' => 100,
+                        'resolveValue' => 'hundred',
+                    ])),
+                    EnhancerDeclaration::create('requirements.value=/[a-z_/]+/')->withConfiguration([
+                        'requirements' => [
+                            'value' => '[a-z_/]+',
+                        ]
+                    ])
+                ),
+                ApplicableConjunction::create(
+                    VariablesContext::create(Variables::create([
+                        'value' => 1100100,
+                        'resolveValue' => 'hundred/binary',
+                    ])),
+                    EnhancerDeclaration::create('requirements.value=/[a-z_/]+/')->withConfiguration([
+                        'requirements' => [
+                            'value' => '[a-z_/]+',
+                        ]
+                    ])
+                )
+            )
+            ->withApplicableItems($builder->declareEnhancers())
+            ->withApplicableSet(
+                AspectDeclaration::create('StaticValueMapper')->withConfiguration([
+                    VariableItem::create('aspectName', [
+                        'type' => 'StaticValueMapper',
+                        'map' => [
+                            'hundred' => 100,
+                            'hundred/binary' => 1100100,
+                        ],
+                    ])
+                ])
+            )
+            ->permute()
+            ->getTargetsForDataProvider();
+    }
+
+    /**
+     * @param TestSet $testSet
+     *
+     * @test
+     * @dataProvider routeRequirementsHavingAspectsAreConsideredDataProvider
+     */
+    public function routeRequirementsHavingAspectsAreConsidered(TestSet $testSet): void
+    {
+        $this->assertGeneratedUriEquals($testSet);
+    }
+
+    private function assertGeneratedUriEquals(TestSet $testSet): void
+    {
+        $builder = Builder::create();
+        $enhancerConfiguration = $builder->compileEnhancerConfiguration($testSet);
+        $additionalParameters = $builder->compileGenerateParameters($testSet);
+        /** @var LanguageContext $languageContext */
+        $languageContext = $testSet->getSingleApplicable(LanguageContext::class);
+        $targetLanguageId = $languageContext->getLanguageId();
+        $expectation = $builder->compileUrl($testSet);
+
+        $this->mergeSiteConfiguration('acme-com', [
+            'routeEnhancers' => ['Enhancer' => $enhancerConfiguration]
+        ]);
+
+        $response = $this->executeFrontendRequest(
+            (new InternalRequest('https://acme.us/'))
+                ->withPageId(1100)
+                ->withInstructions([
+                    $this->createTypoLinkUrlInstruction([
+                        'parameter' => $testSet->getTargetPageId(),
+                        'language' => $targetLanguageId,
+                        'additionalParams' => $additionalParameters,
+                        'forceAbsoluteUrl' => 1,
+                    ])
+                ]),
+            $this->internalRequestContext
+        );
+
+        static::assertStringStartsWith($expectation, (string)$response->getBody());
+    }
+
+    /**
+     * @return array
+     */
+    public function defaultExtbaseControllerActionNamesAreAppliedDataProvider(): array
+    {
+        return [
+            '*::*' => [
+                '&tx_testing_link[value]=1',
+                'https://acme.us/welcome/link/index/one'
+            ],
+            '*::list' => [
+                '&tx_testing_link[action]=list&tx_testing_link[value]=1',
+                'https://acme.us/welcome/link/list/one'
+            ],
+            'Link::*' => [
+                // correctly falling back to defaultController here
+                '&tx_testing_link[controller]=Link&tx_testing_link[value]=1',
+                'https://acme.us/welcome/link/index/one'
+            ],
+            'Page::*' => [
+                // correctly falling back to defaultController here
+                '&tx_testing_link[controller]=Page&tx_testing_link[value]=1',
+                'https://acme.us/welcome/link/index/one'
+            ],
+            'Page::show' => [
+                '&tx_testing_link[controller]=Page&tx_testing_link[action]=show&tx_testing_link[value]=1',
+                'https://acme.us/welcome/page/show/one'
+            ],
+        ];
+    }
+
+    /**
+     * Tests whether ExtbasePluginEnhancer applies `defaultController` values correctly.
+     *
+     * @param string $additionalParameters
+     * @param string $expectation
+     *
+     * @test
+     * @dataProvider defaultExtbaseControllerActionNamesAreAppliedDataProvider
+     */
+    public function defaultExtbaseControllerActionNamesAreApplied(string $additionalParameters, string $expectation)
+    {
+        $targetLanguageId = 0;
+        $this->mergeSiteConfiguration('acme-com', [
+            'routeEnhancers' => [
+                'Enhancer' => [
+                    'type' => 'Extbase',
+                    'routes' => [
+                        ['routePath' => '/link/index/{value}', '_controller' => 'Link::index'],
+                        ['routePath' => '/link/list/{value}',  '_controller' => 'Link::list'],
+                        ['routePath' => '/page/show/{value}', '_controller' => 'Page::show'],
+                    ],
+                    'defaultController' => 'Link::index',
+                    'extension' => 'testing',
+                    'plugin' => 'link',
+                    'aspects' => [
+                        'value' => [
+                            'type' => 'StaticValueMapper',
+                            'map' => [
+                                'one' => 1,
+                            ],
+                        ],
+                    ],
+                ]
             ]
         ]);
 
@@ -689,6 +1090,6 @@ class EnhancerLinkGeneratorTest extends AbstractTestCase
             $this->internalRequestContext
         );
 
-        static::assertStringStartsWith($expectation, (string)$response->getBody());
+        static::assertSame($expectation, (string)$response->getBody());
     }
 }

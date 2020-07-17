@@ -371,7 +371,7 @@ class BackendUserAuthentication extends AbstractUserAuthentication
     }
 
     /**
-     * Checks if the page id, $id, is found within the webmounts set up for the user.
+     * Checks if the page id or page record ($idOrRow) is found within the webmounts set up for the user.
      * This should ALWAYS be checked for any page id a user works with, whether it's about reading, writing or whatever.
      * The point is that this will add the security that a user can NEVER touch parts outside his mounted
      * pages in the page tree. This is otherwise possible if the raw page permissions allows for it.
@@ -380,29 +380,55 @@ class BackendUserAuthentication extends AbstractUserAuthentication
      * (fx. by setting TYPO3_CONF_VARS['BE']['lockBeUserToDBmounts']=0) then it returns "1" right away
      * Otherwise the function will return the uid of the webmount which was first found in the rootline of the input page $id
      *
-     * @param int $id Page ID to check
+     * @param int|array $idOrRow Page ID or full page record to check
      * @param string $readPerms Content of "->getPagePermsClause(1)" (read-permissions). If not set, they will be internally calculated (but if you have the correct value right away you can save that database lookup!)
      * @param bool|int $exitOnError If set, then the function will exit with an error message.
      * @throws \RuntimeException
      * @return int|null The page UID of a page in the rootline that matched a mount point
      */
-    public function isInWebMount($id, $readPerms = '', $exitOnError = 0)
+    public function isInWebMount($idOrRow, $readPerms = '', $exitOnError = 0)
     {
         if (!$GLOBALS['TYPO3_CONF_VARS']['BE']['lockBeUserToDBmounts'] || $this->isAdmin()) {
             return 1;
         }
-        $id = (int)$id;
-        // Check if input id is an offline version page in which case we will map id to the online version:
-        $checkRec = BackendUtility::getRecord('pages', $id, 'pid,t3ver_oid');
+        $fetchPageFromDatabase = true;
+        if (is_array($idOrRow)) {
+            if (empty($idOrRow['uid'])) {
+                throw new \RuntimeException('The given page record is invalid. Missing uid.', 1578950324);
+            }
+            $checkRec = $idOrRow;
+            $id = (int)$idOrRow['uid'];
+            // ensure the required fields are present on the record
+            if (isset($checkRec['pid'], $checkRec['t3ver_oid'], $checkRec[$GLOBALS['TCA']['pages']['ctrl']['languageField']], $checkRec[$GLOBALS['TCA']['pages']['ctrl']['transOrigPointerField']])) {
+                $fetchPageFromDatabase = false;
+            }
+        } else {
+            $id = (int)$idOrRow;
+        }
+        if ($fetchPageFromDatabase) {
+            // Check if input id is an offline version page in which case we will map id to the online version:
+            $checkRec = BackendUtility::getRecord(
+                'pages',
+                $id,
+                'pid,t3ver_oid,'
+                . $GLOBALS['TCA']['pages']['ctrl']['transOrigPointerField'] . ','
+                . $GLOBALS['TCA']['pages']['ctrl']['languageField']
+            );
+        }
         if ($checkRec['pid'] == -1) {
             $id = (int)$checkRec['t3ver_oid'];
+        }
+        // if current rec is a translation then get uid from l10n_parent instead
+        // because web mounts point to pages in default language and rootline returns uids of default languages
+        if ((int)$checkRec[$GLOBALS['TCA']['pages']['ctrl']['languageField']] !== 0 && (int)$checkRec[$GLOBALS['TCA']['pages']['ctrl']['transOrigPointerField']] !== 0) {
+            $id = (int)$checkRec[$GLOBALS['TCA']['pages']['ctrl']['transOrigPointerField']];
         }
         if (!$readPerms) {
             $readPerms = $this->getPagePermsClause(Permission::PAGE_SHOW);
         }
         if ($id > 0) {
             $wM = $this->returnWebmounts();
-            $rL = BackendUtility::BEgetRootLine($id, ' AND ' . $readPerms);
+            $rL = BackendUtility::BEgetRootLine($id, ' AND ' . $readPerms, true);
             foreach ($rL as $v) {
                 if ($v['uid'] && in_array($v['uid'], $wM)) {
                     return $v['uid'];
@@ -481,10 +507,14 @@ class BackendUserAuthentication extends AbstractUserAuthentication
      */
     public function isSystemMaintainer(): bool
     {
+        if (!$this->isAdmin()) {
+            return false;
+        }
+
         if ((int)$GLOBALS['BE_USER']->user['ses_backuserid'] !== 0) {
             return false;
         }
-        if (GeneralUtility::getApplicationContext()->isDevelopment() && $this->isAdmin()) {
+        if (GeneralUtility::getApplicationContext()->isDevelopment()) {
             return true;
         }
         $systemMaintainers = $GLOBALS['TYPO3_CONF_VARS']['SYS']['systemMaintainers'] ?? [];
@@ -499,7 +529,7 @@ class BackendUserAuthentication extends AbstractUserAuthentication
             && empty($GLOBALS['TYPO3_CONF_VARS']['SYS']['systemMaintainers'])) {
             return false;
         }
-        return $this->isAdmin();
+        return true;
     }
 
     /**
@@ -602,8 +632,7 @@ class BackendUserAuthentication extends AbstractUserAuthentication
             return Permission::ALL;
         }
         // Return 0 if page is not within the allowed web mount
-        // Always do this for the default language page record
-        if (!$this->isInWebMount($row[$GLOBALS['TCA']['pages']['ctrl']['transOrigPointerField']] ?: $row['uid'])) {
+        if (!$this->isInWebMount($row)) {
             return Permission::NOTHING;
         }
         $out = Permission::NOTHING;
@@ -675,6 +704,10 @@ class BackendUserAuthentication extends AbstractUserAuthentication
         }
         // Allow all blank values:
         if ((string)$value === '') {
+            return true;
+        }
+        // Allow dividers:
+        if ($value === '--div--') {
             return true;
         }
         // Certain characters are not allowed in the value
@@ -1294,10 +1327,9 @@ class BackendUserAuthentication extends AbstractUserAuthentication
     /**
      * Returns an array with the webmounts.
      * If no webmounts, and empty array is returned.
-     * NOTICE: Deleted pages WILL NOT be filtered out! So if a mounted page has been deleted
-     *         it is STILL coming out as a webmount. This is not checked due to performance.
+     * Webmounts permissions are checked in fetchGroupData()
      *
-     * @return array
+     * @return array of web mounts uids (may include '0')
      */
     public function returnWebmounts()
     {
@@ -2503,10 +2535,14 @@ This is a dump of the failures:
 ';
                 while ($row = $result->fetch(\PDO::FETCH_ASSOC)) {
                     $theData = unserialize($row['log_data']);
+                    $text = @sprintf($row['details'], (string)$theData[0], (string)$theData[1], (string)$theData[2]);
+                    if ((int)$row['type'] === 255) {
+                        $text = str_replace('###IP###', $row['IP'], $text);
+                    }
                     $email_body .= date(
                         $GLOBALS['TYPO3_CONF_VARS']['SYS']['ddmmyy'] . ' ' . $GLOBALS['TYPO3_CONF_VARS']['SYS']['hhmm'],
                         $row['tstamp']
-                        ) . ':  ' . @sprintf($row['details'], (string)$theData[0], (string)$theData[1], (string)$theData[2]);
+                    ) . ':  ' . $text;
                     $email_body .= LF;
                 }
                 /** @var \TYPO3\CMS\Core\Mail\MailMessage $mail */
@@ -2707,7 +2743,7 @@ This is a dump of the failures:
             }
         }
         // Trigger an email to the current BE user, if this has been enabled in the user configuration
-        if ($this->uc['emailMeAtLogin'] && strstr($this->user['email'], '@')) {
+        if (($this->uc['emailMeAtLogin'] ?? false) && strstr($this->user['email'] ?? '', '@')) {
             /** @var \TYPO3\CMS\Core\Mail\MailMessage $mail */
             $mail = GeneralUtility::makeInstance(\TYPO3\CMS\Core\Mail\MailMessage::class);
             $mail->setTo($this->user['email'])->setSubject($subject)->setBody($msg);

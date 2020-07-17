@@ -28,6 +28,15 @@ define([
   var securityUtility = new SecurityUtility();
 
   /**
+   * Creates a new drag instance and initializes the clickDistance setting to
+   * prevent clicks from beeing wrongly detected as drag attempts.
+   */
+  var createD3 = function() {
+    return d3.drag()
+      .clickDistance(5);
+  };
+
+  /**
    * PageTreeDragDrop class
    *
    * @constructor
@@ -90,8 +99,8 @@ define([
 
         _this.dropZoneDelete = null;
 
-        if ((!tree.settings.allowRecursiveDelete && !node.hasChildren) ||
-          tree.settings.allowRecursiveDelete
+        if (node.allowDelete
+          && ((!tree.settings.allowRecursiveDelete && !node.hasChildren) || tree.settings.allowRecursiveDelete)
         ) {
           _this.dropZoneDelete = tree.nodesContainer
             .select('.node[data-state-id="' + node.stateIdentifier + '"]')
@@ -330,7 +339,7 @@ define([
         }
       };
 
-      return d3.drag()
+      return createD3()
         .on('start', self.dragStart)
         .on('drag', self.dragDragged)
         .on('end', self.dragEnd);
@@ -652,7 +661,7 @@ define([
         }
       };
 
-      return d3.drag()
+      return createD3()
         .on('start', self.dragStart)
         .on('drag', self.dragDragged)
         .on('end', self.dragEnd);

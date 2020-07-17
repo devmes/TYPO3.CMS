@@ -23,6 +23,7 @@ use TYPO3\CMS\Core\Http\HtmlResponse;
 use TYPO3\CMS\Core\LinkHandling\LinkService;
 use TYPO3\CMS\Core\Routing\InvalidRouteArgumentsException;
 use TYPO3\CMS\Core\Site\Entity\Site;
+use TYPO3\CMS\Core\Site\Entity\SiteLanguage;
 use TYPO3\CMS\Core\Site\SiteFinder;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
@@ -71,6 +72,7 @@ class PageContentErrorHandler implements PageErrorHandlerInterface
             $resolvedUrl = $this->resolveUrl($request, $this->errorHandlerConfiguration['errorContentSource']);
             $content = null;
             $report = [];
+
             if ($resolvedUrl !== (string)$request->getUri()) {
                 $content = GeneralUtility::getUrl($resolvedUrl, 0, null, $report);
                 if ($content === false && ((int)$report['error'] === -1 || (int)$report['error'] > 200)) {
@@ -103,14 +105,46 @@ class PageContentErrorHandler implements PageErrorHandlerInterface
             return $urlParams['url'];
         }
 
-        $site = $request->getAttribute('site', null);
+        // Get the site related to the configured error page
+        $site = GeneralUtility::makeInstance(SiteFinder::class)->getSiteByPageId((int)$urlParams['pageuid']);
+        // Fall back to current request for the site
         if (!$site instanceof Site) {
-            $site = GeneralUtility::makeInstance(SiteFinder::class)->getSiteByPageId((int)$urlParams['pageuid']);
+            $site = $request->getAttribute('site', null);
         }
+        /** @var SiteLanguage $requestLanguage */
+        $requestLanguage = $request->getAttribute('language', null);
+        // Try to get the current request language from the site that was found above
+        if ($requestLanguage instanceof SiteLanguage && $requestLanguage->isEnabled()) {
+            try {
+                $language = $site->getLanguageById($requestLanguage->getLanguageId());
+            } catch (\InvalidArgumentException $e) {
+                $language = $site->getDefaultLanguage();
+            }
+        } else {
+            $language = $site->getDefaultLanguage();
+        }
+
         // Build Url
-        return (string)$site->getRouter()->generateUri(
+        $uri = $site->getRouter()->generateUri(
             (int)$urlParams['pageuid'],
-            ['_language' => $request->getAttribute('language', null)]
+            ['_language' => $language]
         );
+
+        // Fallback to the current URL if the site is not having a proper scheme and host
+        $currentUri = $request->getUri();
+        if (empty($uri->getScheme())) {
+            $uri = $uri->withScheme($currentUri->getScheme());
+        }
+        if (empty($uri->getUserInfo())) {
+            $uri = $uri->withUserInfo($currentUri->getUserInfo());
+        }
+        if (empty($uri->getHost())) {
+            $uri = $uri->withHost($currentUri->getHost());
+        }
+        if ($uri->getPort() === null) {
+            $uri = $uri->withPort($currentUri->getPort());
+        }
+
+        return (string)$uri;
     }
 }

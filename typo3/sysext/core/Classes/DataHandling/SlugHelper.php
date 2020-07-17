@@ -113,7 +113,7 @@ class SlugHelper
         $slug = GeneralUtility::makeInstance(CharsetConverter::class)->specCharsToASCII('utf-8', $slug);
 
         // Get rid of all invalid characters, but allow slashes
-        $slug = preg_replace('/[^\p{L}0-9\/' . preg_quote($fallbackCharacter) . ']/u', '', $slug);
+        $slug = preg_replace('/[^\p{L}\p{M}0-9\/' . preg_quote($fallbackCharacter) . ']/u', '', $slug);
 
         // Convert multiple fallback characters to a single one
         if ($fallbackCharacter !== '') {
@@ -127,7 +127,7 @@ class SlugHelper
         // Remove trailing and beginning slashes, except if the trailing slash was added, then we'll re-add it
         $appendTrailingSlash = $extractedSlug !== '' && substr($slug, -1) === '/';
         $slug = $extractedSlug . ($appendTrailingSlash ? '/' : '');
-        if ($this->prependSlashInSlug && ($slug{0} ?? '') !== '/') {
+        if ($this->prependSlashInSlug && ($slug[0] ?? '') !== '/') {
             $slug = '/' . $slug;
         }
         return $slug;
@@ -151,7 +151,7 @@ class SlugHelper
      * Used when no slug exists for a record
      *
      * @param array $recordData
-     * @param int $pid
+     * @param int $pid The uid of the page to generate the slug for
      * @return string
      */
     public function generate(array $recordData, int $pid): string
@@ -205,13 +205,27 @@ class SlugHelper
         if ($slug === '' || $slug === '/') {
             $slug = 'default-' . GeneralUtility::shortMD5(json_encode($recordData));
         }
-        if ($this->prependSlashInSlug && ($slug{0} ?? '') !== '/') {
+        if ($this->prependSlashInSlug && ($slug[0] ?? '') !== '/') {
             $slug = '/' . $slug;
         }
         if (!empty($prefix)) {
             $slug = $prefix . $slug;
         }
 
+        // Hook for alternative ways of filling/modifying the slug data
+        foreach ($this->configuration['generatorOptions']['postModifiers'] ?? [] as $funcName) {
+            $hookParameters = [
+                'slug' => $slug,
+                'workspaceId' => $this->workspaceId,
+                'configuration' => $this->configuration,
+                'record' => $recordData,
+                'pid' => $pid,
+                'prefix' => $prefix,
+                'tableName' => $this->tableName,
+                'fieldName' => $this->fieldName,
+            ];
+            $slug = GeneralUtility::callUserFunction($funcName, $hookParameters, $this);
+        }
         return $this->sanitize($slug);
     }
 
@@ -287,7 +301,12 @@ class SlugHelper
         // The installation contains at least ONE other record with the same slug
         // Now find out if it is the same root page ID
         $siteMatcher = GeneralUtility::makeInstance(SiteMatcher::class);
+        $siteMatcher->refresh();
         $siteOfCurrentRecord = $siteMatcher->matchByPageId($pageId);
+        // TODO: Rather than silently ignoring this misconfiguration
+        // (when getting a PseudoSite or NullSite), a warning should
+        // be thrown here, or maybe even let the exception bubble up
+        // and catch it in places that uses this API
         foreach ($records as $record) {
             try {
                 $recordState = RecordStateFactory::forName($this->tableName)->fromArray($record);
@@ -309,6 +328,33 @@ class SlugHelper
     }
 
     /**
+     * Check if there are other records with the same slug.
+     *
+     * @param string $slug
+     * @param RecordState $state
+     * @return bool
+     * @throws \TYPO3\CMS\Core\Exception\SiteNotFoundException
+     */
+    public function isUniqueInTable(string $slug, RecordState $state): bool
+    {
+        $recordId = $state->getSubject()->getIdentifier();
+        $languageId = $state->getContext()->getLanguageId();
+
+        $queryBuilder = $this->createPreparedQueryBuilder();
+        $this->applySlugConstraint($queryBuilder, $slug);
+        $this->applyRecordConstraint($queryBuilder, $recordId);
+        $this->applyLanguageConstraint($queryBuilder, $languageId);
+        $this->applyWorkspaceConstraint($queryBuilder);
+        $statement = $queryBuilder->execute();
+
+        $records = $this->resolveVersionOverlays(
+            $statement->fetchAll()
+        );
+
+        return count($records) === 0;
+    }
+
+    /**
      * Generate a slug with a suffix "/mytitle-1" if that is in use already.
      *
      * @param string $slug proposed slug
@@ -325,7 +371,7 @@ class SlugHelper
         while (!$this->isUniqueInSite(
             $newValue,
             $state
-            ) && $counter++ < 100
+        ) && $counter++ < 100
         ) {
             $newValue = $this->sanitize($rawValue . '-' . $counter);
         }
@@ -351,7 +397,34 @@ class SlugHelper
         while (!$this->isUniqueInPid(
             $newValue,
             $state
-            ) && $counter++ < 100
+        ) && $counter++ < 100
+        ) {
+            $newValue = $this->sanitize($rawValue . '-' . $counter);
+        }
+        if ($counter === 100) {
+            $newValue = $this->sanitize($rawValue . '-' . GeneralUtility::shortMD5($rawValue));
+        }
+        return $newValue;
+    }
+
+    /**
+     * Generate a slug with a suffix "/mytitle-1" if that is in use already.
+     *
+     * @param string $slug proposed slug
+     * @param RecordState $state
+     * @return string
+     * @throws \TYPO3\CMS\Core\Exception\SiteNotFoundException
+     */
+    public function buildSlugForUniqueInTable(string $slug, RecordState $state): string
+    {
+        $slug = $this->sanitize($slug);
+        $rawValue = $this->extract($slug);
+        $newValue = $slug;
+        $counter = 0;
+        while (!$this->isUniqueInTable(
+            $newValue,
+            $state
+        ) && $counter++ < 100
         ) {
             $newValue = $this->sanitize($rawValue . '-' . $counter);
         }
@@ -576,9 +649,24 @@ class SlugHelper
             // do not use spacers (199), recyclers and folders and everything else
         } while (!empty($rootLine) && (int)$parentPageRecord['doktype'] >= 199);
         if ($languageId > 0) {
-            $localizedParentPageRecord = BackendUtility::getRecordLocalization('pages', $parentPageRecord['uid'], $languageId);
-            if (!empty($localizedParentPageRecord)) {
-                $parentPageRecord = reset($localizedParentPageRecord);
+            $languageIds = [$languageId];
+            $siteMatcher = GeneralUtility::makeInstance(SiteMatcher::class);
+            $siteMatcher->refresh();
+
+            try {
+                $site = $siteMatcher->matchByPageId($pid);
+                $siteLanguage = $site->getLanguageById($languageId);
+                $languageIds = array_merge($languageIds, $siteLanguage->getFallbackLanguageIds());
+            } catch (SiteNotFoundException | \InvalidArgumentException $e) {
+                // no site or requested language available - move on
+            }
+
+            foreach ($languageIds as $languageId) {
+                $localizedParentPageRecord = BackendUtility::getRecordLocalization('pages', $parentPageRecord['uid'], $languageId);
+                if (!empty($localizedParentPageRecord)) {
+                    $parentPageRecord = reset($localizedParentPageRecord);
+                    break;
+                }
             }
         }
         return $parentPageRecord;

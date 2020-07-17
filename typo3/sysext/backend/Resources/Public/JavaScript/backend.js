@@ -11,6 +11,11 @@
  * The TYPO3 project - inspiring people to share!
  */
 
+// Reset the current window name in case it was a preview before
+window.name = '';
+
+// Remove window.opener from backend
+window.opener = undefined;
 
 /**
  * common storage and global object, could later hold more information about the current user etc.

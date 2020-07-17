@@ -17,10 +17,10 @@ namespace TYPO3\CMS\Fluid\ViewHelpers\Be\Menus;
 use TYPO3Fluid\Fluid\Core\Parser\SyntaxTree\ViewHelperNode;
 
 /**
- * View helper which groups options of an option tag.
+ * ViewHelper which groups options of an option tag.
  *
  * Example
- * -------
+ * =======
  *
  * ::
  *
@@ -65,7 +65,7 @@ class ActionMenuItemGroupViewHelper extends ActionMenuViewHelper
         $this->tag->addAttribute('label', $label);
         $options = '';
         foreach ($this->childNodes as $childNode) {
-            if ($childNode instanceof ViewHelperNode && $childNode->getViewHelperClassName() === ActionMenuItemViewHelper::class) {
+            if ($childNode instanceof ViewHelperNode) {
                 $options .= $childNode->evaluate($this->renderingContext);
             }
         }

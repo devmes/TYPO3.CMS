@@ -403,6 +403,7 @@ class Indexer
         // Group list (hardcoded for now...)
         // cHash values:
         if ($createCHash) {
+            $cHash_array['id'] = $id;
             /* @var \TYPO3\CMS\Frontend\Page\CacheHashCalculator $cacheHash */
             $cacheHash = GeneralUtility::makeInstance(\TYPO3\CMS\Frontend\Page\CacheHashCalculator::class);
             $this->conf['cHash'] = $cacheHash->generateForParameters(HttpUtility::buildQueryString($cHash_array));
@@ -510,8 +511,8 @@ class Indexer
         $this->setT3Hashes();
         // Indexer configuration from Extension Manager interface:
         $this->indexerConfig = GeneralUtility::makeInstance(ExtensionConfiguration::class)->get('indexed_search');
-        $this->tstamp_minAge = MathUtility::forceIntegerInRange($this->indexerConfig['minAge'] * 3600, 0);
-        $this->tstamp_maxAge = MathUtility::forceIntegerInRange($this->indexerConfig['maxAge'] * 3600, 0);
+        $this->tstamp_minAge = MathUtility::forceIntegerInRange((int)($this->indexerConfig['minAge'] ?? 0) * 3600, 0);
+        $this->tstamp_maxAge = MathUtility::forceIntegerInRange((int)($this->indexerConfig['maxAge'] ?? 0) * 3600, 0);
         $this->maxExternalFiles = MathUtility::forceIntegerInRange($this->indexerConfig['maxExternalFiles'], 0, 1000, 5);
         $this->flagBitMask = MathUtility::forceIntegerInRange($this->indexerConfig['flagBitMask'], 0, 255);
         // Workaround: If the extension configuration was not updated yet, the value is not existing
@@ -660,7 +661,8 @@ class Indexer
             }
             // @todo The code below stops at first unset tag. Is that correct?
             for ($i = 0; isset($meta[$i]); $i++) {
-                $meta[$i] = GeneralUtility::get_tag_attributes($meta[$i]);
+                // decode HTML entities, meta tag content needs to be encoded later
+                $meta[$i] = GeneralUtility::get_tag_attributes($meta[$i], true);
                 if (stristr($meta[$i]['name'], 'keywords')) {
                     $contentArr['keywords'] .= ',' . $this->addSpacesToKeywordList($meta[$i]['content']);
                 }
@@ -880,7 +882,7 @@ class Indexer
                         $hyperLinksData[] = [
                             'tag' => $tagData,
                             'href' => $tagAttributes[0]['href'],
-                            'localPath' => $this->createLocalPath($tagAttributes[0]['href'])
+                            'localPath' => $this->createLocalPath(urldecode($tagAttributes[0]['href']))
                         ];
                     }
                 }
@@ -1187,7 +1189,7 @@ class Indexer
                             $this->log_pull();
                             if (is_array($contentParts)) {
                                 // Calculating a hash over what is to be the actual content. (see indexTypo3PageContent())
-                                $content_md5h = IndexedSearchUtility::md5inthash(implode($contentParts, ''));
+                                $content_md5h = IndexedSearchUtility::md5inthash(implode('', $contentParts));
                                 if ($this->checkExternalDocContentHash($phash_arr['phash_grouping'], $content_md5h) || $force) {
                                     // Increment counter:
                                     $this->externalFileCounter++;
@@ -1474,7 +1476,7 @@ class Indexer
             'phash' => $this->hash['phash'],
             'phash_grouping' => $this->hash['phash_grouping'],
             'cHashParams' => serialize($this->cHashParams),
-            'static_page_arguments' => json_encode($this->conf['staticPageArguments']),
+            'static_page_arguments' => is_array($this->conf['staticPageArguments']) ? json_encode($this->conf['staticPageArguments']) : null,
             'contentHash' => $this->content_md5h,
             'data_page_id' => $this->conf['id'],
             // @deprecated since TYPO3 v9, will be removed in TYPO3 v10.0. Remove along with database field data_page_reg1
@@ -2238,7 +2240,7 @@ class Indexer
         } else {
             $newFreq = $freq / $mapFactor;
         }
-        return $newFreq;
+        return (int)$newFreq;
     }
 
     /********************************
@@ -2258,7 +2260,7 @@ class Indexer
             'sys_lang' => (int)$this->conf['sys_language_uid'],
             'MP' => (string)$this->conf['MP'],
             'cHash' => $this->cHashParams,
-            'staticPageArguments' => $this->conf['staticPageArguments'],
+            'staticPageArguments' => is_array($this->conf['staticPageArguments']) ? json_encode($this->conf['staticPageArguments']) : null,
         ];
         // Set grouping hash (Identifies a "page" combined of id, type, language, mountpoint and cHash parameters):
         $this->hash['phash_grouping'] = IndexedSearchUtility::md5inthash(serialize($hArray));

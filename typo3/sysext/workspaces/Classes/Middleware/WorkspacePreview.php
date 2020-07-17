@@ -19,11 +19,13 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Symfony\Component\HttpFoundation\Cookie;
 use TYPO3\CMS\Core\Authentication\BackendUserAuthentication;
 use TYPO3\CMS\Core\Context\Context;
 use TYPO3\CMS\Core\Context\UserAspect;
 use TYPO3\CMS\Core\Context\WorkspaceAspect;
 use TYPO3\CMS\Core\Database\ConnectionPool;
+use TYPO3\CMS\Core\Http\CookieHeaderTrait;
 use TYPO3\CMS\Core\Http\HtmlResponse;
 use TYPO3\CMS\Core\Http\NormalizedParams;
 use TYPO3\CMS\Core\Http\Stream;
@@ -42,6 +44,8 @@ use TYPO3\CMS\Workspaces\Authentication\PreviewUserAuthentication;
  */
 class WorkspacePreview implements MiddlewareInterface
 {
+    use CookieHeaderTrait;
+
     /**
      * The GET parameter to be used (also the cookie name)
      *
@@ -161,14 +165,15 @@ class WorkspacePreview implements MiddlewareInterface
      *
      * @param ServerRequestInterface $request
      * @param string $inputCode
-     * @return array Preview configuration array from sys_preview record.
+     * @return array|null Preview configuration array from sys_preview record.
      * @throws \Exception
      */
-    protected function getPreviewConfigurationFromRequest(ServerRequestInterface $request, string $inputCode): array
+    protected function getPreviewConfigurationFromRequest(ServerRequestInterface $request, string $inputCode): ?array
     {
         $previewData = $this->getPreviewData($inputCode);
         if (!is_array($previewData)) {
-            throw new \Exception('ADMCMD command could not be executed! (No keyword configuration found)', 1294585192);
+            // ADMCMD command could not be executed! (No keyword configuration found)
+            return null;
         }
         if ($request->getMethod() === 'POST') {
             throw new \Exception('POST requests are incompatible with keyword preview.', 1294585191);
@@ -212,7 +217,24 @@ class WorkspacePreview implements MiddlewareInterface
      */
     protected function setCookie(string $inputCode, NormalizedParams $normalizedParams)
     {
-        setcookie($this->previewKey, $inputCode, 0, $normalizedParams->getSitePath(), '', true, true);
+        $cookieSameSite = $this->sanitizeSameSiteCookieValue(
+            strtolower($GLOBALS['TYPO3_CONF_VARS']['BE']['cookieSameSite'] ?? Cookie::SAMESITE_STRICT)
+        );
+        // None needs the secure option (only allowed on HTTPS)
+        $cookieSecure = $cookieSameSite === Cookie::SAMESITE_NONE || $normalizedParams->isHttps();
+
+        $cookie = new Cookie(
+            $this->previewKey,
+            $inputCode,
+            0,
+            $normalizedParams->getSitePath(),
+            null,
+            $cookieSecure,
+            true,
+            false,
+            $cookieSameSite
+        );
+        header('Set-Cookie: ' . $cookie->__toString(), false);
     }
 
     /**
@@ -276,13 +298,14 @@ class WorkspacePreview implements MiddlewareInterface
      */
     protected function renderPreviewInfo(TypoScriptFrontendController $tsfe, NormalizedParams $normalizedParams): string
     {
+        $content = '';
         if (!isset($tsfe->config['config']['disablePreviewNotification']) || (int)$tsfe->config['config']['disablePreviewNotification'] !== 1) {
             // get the title of the current workspace
             $currentWorkspaceId = $tsfe->whichWorkspace();
             $currentWorkspaceTitle = $this->getWorkspaceTitle($currentWorkspaceId);
             $currentWorkspaceTitle = htmlspecialchars($currentWorkspaceTitle);
             if ($tsfe->config['config']['message_preview_workspace']) {
-                $content .= sprintf(
+                $content = sprintf(
                     $tsfe->config['config']['message_preview_workspace'],
                     $currentWorkspaceTitle,
                     $currentWorkspaceId ?? -99
@@ -314,7 +337,7 @@ class WorkspacePreview implements MiddlewareInterface
                 $styles[] = 'pointer-events: none';
                 $styles[] = 'text-align: center';
                 $styles[] = 'border-radius: 2px';
-                $content .= '<div id="typo3-preview-info" style="' . implode(';', $styles) . '">' . $text . '</div>';
+                $content = '<div id="typo3-preview-info" style="' . implode(';', $styles) . '">' . $text . '</div>';
             }
         }
         return $content;
@@ -341,7 +364,7 @@ class WorkspacePreview implements MiddlewareInterface
             )
             ->execute()
             ->fetchColumn();
-        return $title !== false ? $title : '';
+        return (string)($title !== false ? $title : '');
     }
 
     /**

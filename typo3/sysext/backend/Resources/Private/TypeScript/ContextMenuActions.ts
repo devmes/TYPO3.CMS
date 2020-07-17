@@ -13,6 +13,7 @@
 
 import {SeverityEnum} from './Enum/Severity';
 import * as $ from 'jquery';
+import AjaxDataHandler = require('./AjaxDataHandler');
 import InfoWindow = require('./InfoWindow');
 import Modal = require('./Modal');
 import ModuleMenu = require('./ModuleMenu');
@@ -165,9 +166,10 @@ class ContextMenuActions {
    * @param {number} uid
    */
   public static disableRecord(table: string, uid: number): void {
+    const disableFieldName = $(this).data('disable-field') || 'hidden';
     Viewport.ContentContainer.setUrl(
       top.TYPO3.settings.RecordCommit.moduleUrl
-      + '&data[' + table + '][' + uid + '][hidden]=1'
+      + '&data[' + table + '][' + uid + '][' + disableFieldName + ']=1'
       + '&redirect=' + ContextMenuActions.getReturnUrl(),
     ).done((): void => {
       Viewport.NavigationContainer.PageTree.refreshTree();
@@ -179,9 +181,10 @@ class ContextMenuActions {
    * @param {number} uid
    */
   public static enableRecord(table: string, uid: number): void {
+    const disableFieldName = $(this).data('disable-field') || 'hidden';
     Viewport.ContentContainer.setUrl(
       top.TYPO3.settings.RecordCommit.moduleUrl
-      + '&data[' + table + '][' + uid + '][hidden]=0'
+      + '&data[' + table + '][' + uid + '][' + disableFieldName + ']=0'
       + '&redirect=' + ContextMenuActions.getReturnUrl(),
     ).done((): void => {
       Viewport.NavigationContainer.PageTree.refreshTree();
@@ -213,17 +216,13 @@ class ContextMenuActions {
 
     $modal.on('button.clicked', (e: JQueryEventObject): void => {
       if (e.target.getAttribute('name') === 'delete') {
-        Viewport.ContentContainer.setUrl(
-          top.TYPO3.settings.RecordCommit.moduleUrl
-          + '&redirect=' + ContextMenuActions.getReturnUrl()
-          + '&cmd[' + table + '][' + uid + '][delete]=1',
-        ).done((): void => {
+        const xhr = AjaxDataHandler.process('cmd[' + table + '][' + uid + '][delete]=1');
+        xhr.done((): void => {
           if (table === 'pages' && Viewport.NavigationContainer.PageTree) {
             if (uid === top.fsMod.recentIds.web) {
               let node = Viewport.NavigationContainer.PageTree.instance.nodes[0];
               Viewport.NavigationContainer.PageTree.selectNode(node);
             }
-
             Viewport.NavigationContainer.PageTree.refreshTree();
           }
         });

@@ -454,13 +454,13 @@ class ExtendedTemplateService extends TemplateService
                             $ln = '';
                         }
                         if ($this->tsbrowser_searchKeys[$depth] & 4) {
+                            // The key has matched the search string
                             $label = '<strong class="text-danger">' . $label . '</strong>';
                         }
-                        // The key has matched the search string
-                        $label = '<a href="' . htmlspecialchars($aHref) . '" title="' . htmlspecialchars($ln) . '">' . $label . '</a>';
+                        $label = '<a href="' . htmlspecialchars($aHref) . '" title="' . htmlspecialchars($depth_in . $key . ' ' . $ln) . '">' . $label . '</a>';
                     }
                 }
-                $HTML .= '<span class="list-tree-label">[' . $label . ']</span>';
+                $HTML .= '<span class="list-tree-label" title="' . htmlspecialchars($depth_in . $key) . '">[' . $label . ']</span>';
                 if (isset($arr[$key])) {
                     $theValue = $arr[$key];
                     if ($this->fixedLgd) {
@@ -825,7 +825,7 @@ class ExtendedTemplateService extends TemplateService
                 }
             }
         }
-        $output = implode($cArr, '<br />') . '<br />';
+        $output = implode('<br />', $cArr) . '<br />';
         return $output;
     }
 
@@ -1218,11 +1218,11 @@ class ExtendedTemplateService extends TemplateService
                                 . '</label>';
                             break;
                         case 'comment':
-                            $sel = $fV ? 'checked' : '';
+                            $sel = $fV ? '' : 'checked';
                             $p_field =
-                                '<input type="hidden" name="' . $fN . '" value="#" />'
+                                '<input type="hidden" name="' . $fN . '" value="" />'
                                 . '<label class="btn btn-default btn-checkbox">'
-                                . '<input id="' . $idName . '" type="checkbox" name="' . $fN . '" value="" ' . $sel . ' onClick="uFormUrl(' . $aname . ')" />'
+                                . '<input id="' . $idName . '" type="checkbox" name="' . $fN . '" value="1" ' . $sel . ' onClick="uFormUrl(' . $aname . ')" />'
                                 . '<span class="t3-icon fa"></span>'
                                 . '</label>';
                             break;
@@ -1399,7 +1399,7 @@ class ExtendedTemplateService extends TemplateService
             if (count($parts) === 2) {
                 $parts[1] = $theValue;
             }
-            $this->raw[$lineNum] = implode($parts, '=');
+            $this->raw[$lineNum] = implode('=', $parts);
         } else {
             $this->raw[] = $key . ' =' . $theValue;
         }
@@ -1507,9 +1507,9 @@ class ExtendedTemplateService extends TemplateService
                                 break;
                             case 'comment':
                                 if ($var) {
-                                    $var = '#';
-                                } else {
                                     $var = '';
+                                } else {
+                                    $var = '#';
                                 }
                                 break;
                             case 'wrap':

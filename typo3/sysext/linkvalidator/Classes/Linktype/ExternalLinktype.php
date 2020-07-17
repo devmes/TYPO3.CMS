@@ -15,9 +15,9 @@ namespace TYPO3\CMS\Linkvalidator\Linktype;
  */
 
 use GuzzleHttp\Cookie\CookieJar;
-use Mso\IdnaConvert\IdnaConvert;
 use TYPO3\CMS\Core\Http\RequestFactory;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Core\Utility\HttpUtility;
 
 /**
  * This class provides Check External Links plugin implementation
@@ -27,23 +27,28 @@ class ExternalLinktype extends AbstractLinktype
     /**
      * Cached list of the URLs, which were already checked for the current processing
      *
-     * @var array $urlReports
+     * @var array
      */
     protected $urlReports = [];
 
     /**
      * Cached list of all error parameters of the URLs, which were already checked for the current processing
      *
-     * @var array $urlErrorParams
+     * @var array
      */
     protected $urlErrorParams = [];
 
     /**
-     * List of headers to be used for matching an URL for the current processing
+     * List of HTTP request headers to use for checking a URL
      *
-     * @var array $additionalHeaders
+     * @var array
      */
-    protected $additionalHeaders = [];
+    protected $headers = [
+        'User-Agent'      => 'TYPO3 linkvalidator',
+        'Accept'          => '*/*',
+        'Accept-Language' => '*',
+        'Accept-Encoding' => '*',
+    ];
 
     /**
      * @var RequestFactory
@@ -51,7 +56,7 @@ class ExternalLinktype extends AbstractLinktype
     protected $requestFactory;
 
     /**
-     * @var array $this->errorParams
+     * @var array
      */
     protected $errorParams = [];
 
@@ -71,6 +76,7 @@ class ExternalLinktype extends AbstractLinktype
      */
     public function checkLink($origUrl, $softRefEntry, $reference)
     {
+        $isValidUrl = false;
         // use URL from cache, if available
         if (isset($this->urlReports[$origUrl])) {
             $this->setErrorParams($this->urlErrorParams[$origUrl]);
@@ -78,14 +84,15 @@ class ExternalLinktype extends AbstractLinktype
         }
         $options = [
             'cookies' => GeneralUtility::makeInstance(CookieJar::class),
-            'allow_redirects' => ['strict' => true]
+            'allow_redirects' => ['strict' => true],
+            'headers'         => $this->headers
         ];
         $url = $this->preprocessUrl($origUrl);
         if (!empty($url)) {
             $isValidUrl = $this->requestUrl($url, 'HEAD', $options);
             if (!$isValidUrl) {
                 // HEAD was not allowed or threw an error, now trying GET
-                $options['headers']['Range'] = 'bytes = 0 - 4048';
+                $options['headers']['Range'] = 'bytes=0-4048';
                 $isValidUrl = $this->requestUrl($url, 'GET', $options);
             }
         }
@@ -108,13 +115,12 @@ class ExternalLinktype extends AbstractLinktype
         $isValidUrl = false;
         try {
             $response = $this->requestFactory->request($url, $method, $options);
-            if ($response->getStatusCode() < 300) {
-                $isValidUrl = true;
-            } else {
+            if ($response->getStatusCode() >= 300) {
                 $this->errorParams['errorType'] = $response->getStatusCode();
                 $this->errorParams['message'] = $this->getErrorMessage($this->errorParams);
+            } else {
+                $isValidUrl = true;
             }
-            $isValidUrl = true;
         } catch (\GuzzleHttp\Exception\TooManyRedirectsException $e) {
             // redirect loop or too many redirects
             // todo: change errorType to 'redirect' (breaking change)
@@ -131,6 +137,7 @@ class ExternalLinktype extends AbstractLinktype
             $this->errorParams['message'] = $this->getErrorMessage($this->errorParams);
         } catch (\GuzzleHttp\Exception\RequestException $e) {
             $this->errorParams['errorType'] = 'network';
+            $this->errorParams['exception'] = $e->getMessage();
             $this->errorParams['message'] = $this->getErrorMessage($this->errorParams);
         } catch (\Exception $e) {
             // Generic catch for anything else that may go wrong
@@ -176,10 +183,14 @@ class ExternalLinktype extends AbstractLinktype
                 break;
             case 'network':
                 $message = $lang->getLL('list.report.networkexception');
+                if ($errorParams['exception']) {
+                    $message .= ':' . $errorParams['exception'];
+                }
                 break;
             default:
                 $message = sprintf($lang->getLL('list.report.otherhttpcode'), $errorType, $errorParams['exception']);
         }
+
         return $message;
     }
 
@@ -209,7 +220,14 @@ class ExternalLinktype extends AbstractLinktype
     protected function preprocessUrl(string $url): string
     {
         try {
-            return (new IdnaConvert())->encode($url);
+            $url = html_entity_decode($url);
+            $parts = parse_url($url);
+            $newDomain = (string)HttpUtility::idn_to_ascii($parts['host']);
+            if (strcmp($parts['host'], $newDomain) !== 0) {
+                $parts['host'] = $newDomain;
+                $url = HttpUtility::buildUrl($parts);
+            }
+            return $url;
         } catch (\Exception $e) {
             // in case of any error, return empty url.
             $this->errorParams['errorType'] = 'exception';

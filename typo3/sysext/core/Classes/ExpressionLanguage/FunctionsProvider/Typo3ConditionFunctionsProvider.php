@@ -17,10 +17,12 @@ namespace TYPO3\CMS\Core\ExpressionLanguage\FunctionsProvider;
 
 use Symfony\Component\ExpressionLanguage\ExpressionFunction;
 use Symfony\Component\ExpressionLanguage\ExpressionFunctionProviderInterface;
+use TYPO3\CMS\Core\Exception\MissingTsfeException;
 use TYPO3\CMS\Core\ExpressionLanguage\RequestWrapper;
 use TYPO3\CMS\Core\Site\Entity\Site;
 use TYPO3\CMS\Core\Site\Entity\SiteLanguage;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Frontend\Controller\TypoScriptFrontendController;
 
 /**
  * Class TypoScriptConditionProvider
@@ -48,7 +50,7 @@ class Typo3ConditionFunctionsProvider implements ExpressionFunctionProviderInter
         return new ExpressionFunction('loginUser', function () {
             // Not implemented, we only use the evaluator
         }, function ($arguments, $str) {
-            $user = $arguments['backend']->user ?? $arguments['frontend']->user;
+            $user = $arguments['frontend']->user ?? $arguments['backend']->user;
             if ($user->isLoggedIn) {
                 foreach (GeneralUtility::trimExplode(',', $str, true) as $test) {
                     if ($test === '*' || (string)$user->userId === (string)$test) {
@@ -65,7 +67,10 @@ class Typo3ConditionFunctionsProvider implements ExpressionFunctionProviderInter
         return new ExpressionFunction('getTSFE', function () {
             // Not implemented, we only use the evaluator
         }, function ($arguments) {
-            return $GLOBALS['TSFE'];
+            if (($GLOBALS['TSFE'] ?? null) instanceof TypoScriptFrontendController) {
+                return $GLOBALS['TSFE'];
+            }
+            throw new MissingTsfeException('TSFE is not available in this context', 1578831632);
         });
     }
 
@@ -74,7 +79,7 @@ class Typo3ConditionFunctionsProvider implements ExpressionFunctionProviderInter
         return new ExpressionFunction('usergroup', function () {
             // Not implemented, we only use the evaluator
         }, function ($arguments, $str) {
-            $user = $arguments['backend']->user ?? $arguments['frontend']->user;
+            $user = $arguments['frontend']->user ?? $arguments['backend']->user;
             $groupList = $user->userGroupList ?? '';
             // '0,-1' is the default usergroups string when not logged in!
             if ($groupList !== '0,-1' && $groupList !== '') {

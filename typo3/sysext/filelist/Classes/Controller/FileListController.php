@@ -30,6 +30,7 @@ use TYPO3\CMS\Core\Resource\DuplicationBehavior;
 use TYPO3\CMS\Core\Resource\Exception;
 use TYPO3\CMS\Core\Resource\Folder;
 use TYPO3\CMS\Core\Resource\ResourceFactory;
+use TYPO3\CMS\Core\Resource\Search\FileSearchDemand;
 use TYPO3\CMS\Core\Resource\Utility\ListUtility;
 use TYPO3\CMS\Core\Type\Bitmask\JsConfirmation;
 use TYPO3\CMS\Core\Utility\File\ExtendedFileUtility;
@@ -204,7 +205,7 @@ class FileListController extends ActionController
 
         try {
             if ($combinedIdentifier) {
-                /** @var ResourceFactory $resourceFactory */
+                $this->getBackendUser()->evaluateUserSpecificFileFilterSettings();
                 $resourceFactory = GeneralUtility::makeInstance(ResourceFactory::class);
                 $storage = $resourceFactory->getStorageObjectFromCombinedIdentifier($combinedIdentifier);
                 $identifier = substr($combinedIdentifier, strpos($combinedIdentifier, ':') + 1);
@@ -405,8 +406,9 @@ class FileListController extends ActionController
                 if (!empty($items)) {
                     // Make command array:
                     $FILE = [];
-                    foreach ($items as $v) {
-                        $FILE['delete'][] = ['data' => $v];
+                    foreach ($items as $clipboardIdentifier => $combinedIdentifier) {
+                        $FILE['delete'][] = ['data' => $combinedIdentifier];
+                        $this->filelist->clipObj->removeElement($clipboardIdentifier);
                     }
                     // Init file processing object for deleting and pass the cmd array.
                     /** @var ExtendedFileUtility $fileProcessor */
@@ -415,6 +417,9 @@ class FileListController extends ActionController
                     $fileProcessor->setExistingFilesConflictMode($this->overwriteExistingFiles);
                     $fileProcessor->start($FILE);
                     $fileProcessor->processData();
+                    // Clean & Save clipboard state
+                    $this->filelist->clipObj->cleanCurrent();
+                    $this->filelist->clipObj->endClipboard();
                 }
             }
             // Start up filelisting object, include settings.
@@ -534,11 +539,11 @@ class FileListController extends ActionController
         if (empty($searchWord)) {
             $this->forward('index');
         }
+        $searchDemand = FileSearchDemand::createForSearchTerm($searchWord)->withRecursive();
+        $files = $this->folderObject->searchFiles($searchDemand);
 
         $fileFacades = [];
-        $files = $this->fileRepository->searchByName($this->folderObject, $searchWord);
-
-        if (empty($files)) {
+        if (count($files) === 0) {
             $this->controllerContext->getFlashMessageQueue('core.template.flashMessages')->addMessage(
                 new FlashMessage(
                     LocalizationUtility::translate('flashmessage.no_results', 'filelist'),

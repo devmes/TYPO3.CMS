@@ -22,7 +22,6 @@ use TYPO3\CMS\Core\Context\LanguageAspect;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\RelationHandler;
 use TYPO3\CMS\Core\Routing\SiteMatcher;
-use TYPO3\CMS\Core\Site\Entity\Site;
 use TYPO3\CMS\Core\Site\Entity\SiteInterface;
 use TYPO3\CMS\Core\TimeTracker\TimeTracker;
 use TYPO3\CMS\Core\TypoScript\TemplateService;
@@ -362,6 +361,12 @@ abstract class AbstractMenuContentObject
                 }
                 $this->alwaysActivePIDlist = GeneralUtility::intExplode(',', $this->conf['alwaysActivePIDlist']);
             }
+            // includeNotInMenu initialized:
+            $includeNotInMenu = $this->conf['includeNotInMenu'];
+            $includeNotInMenuConf = $this->conf['includeNotInMenu.'] ?? null;
+            $this->conf['includeNotInMenu'] = is_array($includeNotInMenuConf)
+                ? $this->parent_cObj->stdWrap($includeNotInMenu, $includeNotInMenuConf)
+                : $includeNotInMenu;
             // 'not in menu' doktypes
             if ($this->conf['excludeDoktypes']) {
                 $this->doktypeExcludeList = implode(',', GeneralUtility::intExplode(',', $this->conf['excludeDoktypes']));
@@ -531,7 +536,7 @@ abstract class AbstractMenuContentObject
                 $c_b++;
                 // If the beginning item has been reached.
                 if ($begin <= $c_b) {
-                    $this->menuArr[$c] = $data;
+                    $this->menuArr[$c] = $this->determineOriginalShortcutPage($data);
                     $this->menuArr[$c]['isSpacer'] = $spacer;
                     $c++;
                     if ($maxItems && $c >= $maxItems) {
@@ -813,6 +818,14 @@ abstract class AbstractMenuContentObject
             // Get sub-pages:
             $statement = $this->parent_cObj->exec_getQuery('pages', ['pidInList' => $id, 'orderBy' => $sortingField]);
             while ($row = $statement->fetch()) {
+                // When the site language configuration is in "free" mode, then the page without overlay is fetched
+                // (which is kind-of strange for pages, but this is what exec_getQuery() is doing)
+                // this means, that $row is a translated page, but hasn't been overlaid. For this reason, we fetch
+                // the default translation page again, (which does a ->getPageOverlay() again - doing this on a
+                // translated page would result in no record at all)
+                if ($row['l10n_parent'] > 0 && !isset($row['_PAGES_OVERLAY'])) {
+                    $row = $this->sys_page->getPage($row['l10n_parent'], true);
+                }
                 $tsfe->sys_page->versionOL('pages', $row, true);
                 if (!empty($row)) {
                     // Keep mount point?
@@ -836,7 +849,7 @@ abstract class AbstractMenuContentObject
                         if ($MP) {
                             $row['_MP_PARAM'] = $MP . ($row['_MP_PARAM'] ? ',' . $row['_MP_PARAM'] : '');
                         }
-                        $menuItems[$row['uid']] = $this->sys_page->getPageOverlay($row);
+                        $menuItems[] = $this->sys_page->getPageOverlay($row);
                     }
                 }
             }
@@ -939,10 +952,15 @@ abstract class AbstractMenuContentObject
         // *'auto', 'manual', 'tstamp'
         $mode = $this->conf['special.']['mode'];
         // Get id's
+        $beginAtLevel = MathUtility::forceIntegerInRange($this->conf['special.']['beginAtLevel'], 0, 100);
         $id_list_arr = [];
         foreach ($items as $id) {
-            $bA = MathUtility::forceIntegerInRange($this->conf['special.']['beginAtLevel'], 0, 100);
-            $id_list_arr[] = $this->parent_cObj->getTreeList(-1 * $id, $depth - 1 + $bA, $bA - 1);
+            // Exclude the current ID if beginAtLevel is > 0
+            if ($beginAtLevel > 0) {
+                $id_list_arr[] = $this->parent_cObj->getTreeList($id, $depth - 1 + $beginAtLevel, $beginAtLevel - 1);
+            } else {
+                $id_list_arr[] = $this->parent_cObj->getTreeList(-1 * $id, $depth - 1 + $beginAtLevel, $beginAtLevel - 1);
+            }
         }
         $id_list = implode(',', $id_list_arr);
         // Get sortField (mode)
@@ -978,6 +996,14 @@ abstract class AbstractMenuContentObject
             'max' => $limit
         ]);
         while ($row = $statement->fetch()) {
+            // When the site language configuration is in "free" mode, then the page without overlay is fetched
+            // (which is kind-of strange for pages, but this is what exec_getQuery() is doing)
+            // this means, that $row is a translated page, but hasn't been overlaid. For this reason, we fetch
+            // the default translation page again, (which does a ->getPageOverlay() again - doing this on a
+            // translated page would result in no record at all)
+            if ($row['l10n_parent'] > 0 && !isset($row['_PAGES_OVERLAY'])) {
+                $row = $this->sys_page->getPage($row['l10n_parent'], true);
+            }
             $tsfe->sys_page->versionOL('pages', $row, true);
             if (is_array($row)) {
                 $menuItems[$row['uid']] = $this->sys_page->getPageOverlay($row);
@@ -998,7 +1024,7 @@ abstract class AbstractMenuContentObject
     {
         $tsfe = $this->getTypoScriptFrontendController();
         $menuItems = [];
-        list($specialValue) = GeneralUtility::intExplode(',', $specialValue);
+        [$specialValue] = GeneralUtility::intExplode(',', $specialValue);
         if (!$specialValue) {
             $specialValue = $tsfe->page['uid'];
         }
@@ -1049,7 +1075,7 @@ abstract class AbstractMenuContentObject
         // Which field is for keywords
         $kfield = 'keywords';
         if ($this->conf['special.']['keywordsField']) {
-            list($kfield) = explode(' ', trim($this->conf['special.']['keywordsField']));
+            [$kfield] = explode(' ', trim($this->conf['special.']['keywordsField']));
         }
         // If there are keywords and the startuid is present
         if ($kw && $startUid) {
@@ -1188,7 +1214,7 @@ abstract class AbstractMenuContentObject
     protected function prepareMenuItemsForBrowseMenu($specialValue, $sortingField, $additionalWhere)
     {
         $menuItems = [];
-        list($specialValue) = GeneralUtility::intExplode(',', $specialValue);
+        [$specialValue] = GeneralUtility::intExplode(',', $specialValue);
         if (!$specialValue) {
             $specialValue = $this->getTypoScriptFrontendController()->page['uid'];
         }
@@ -1708,7 +1734,7 @@ abstract class AbstractMenuContentObject
         // Override url if current page is a shortcut
         $shortcut = null;
         if ($this->menuArr[$key]['doktype'] == PageRepository::DOKTYPE_SHORTCUT && $this->menuArr[$key]['shortcut_mode'] != PageRepository::SHORTCUT_MODE_RANDOM_SUBPAGE) {
-            $menuItem = $this->determineOriginalShortcutPage($this->menuArr[$key]);
+            $menuItem = $this->menuArr[$key];
             try {
                 $shortcut = $tsfe->sys_page->getPageShortcut(
                     $menuItem['shortcut'],

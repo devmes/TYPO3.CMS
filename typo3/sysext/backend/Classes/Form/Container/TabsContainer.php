@@ -85,10 +85,12 @@ class TabsContainer extends AbstractContainer
             $options['renderType'] = 'paletteAndSingleContainer';
             $childArray = $this->nodeFactory->create($options)->render();
 
-            $tabElements[] = [
-                'label' => $tabWithLabelAndElements['label'],
-                'content' => $childArray['html'],
-            ];
+            if ($childArray['html'] !== '') {
+                $tabElements[] = [
+                    'label' => $tabWithLabelAndElements['label'],
+                    'content' => $childArray['html'],
+                ];
+            }
             $resultArray = $this->mergeChildReturnIntoExistingResult($resultArray, $childArray, false);
         }
 

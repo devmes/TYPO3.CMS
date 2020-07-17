@@ -18,9 +18,12 @@ namespace TYPO3\CMS\Fluid\ViewHelpers\Form;
  * Creates a submit button.
  *
  * Examples
+ * ========
+ *
+ * Defaults
  * --------
  *
- * Defaults::
+ * ::
  *
  *    <f:form.submit value="Send Mail" />
  *
@@ -28,9 +31,12 @@ namespace TYPO3\CMS\Fluid\ViewHelpers\Form;
  *
  *    <input type="submit" />
  *
- * Dummy content for template preview::
+ * Dummy content for template preview
+ * ----------------------------------
  *
- *    <f:submit name="mySubmit" value="Send Mail"><button>dummy button</button></f:submit>
+ * ::
+ *
+ *    <f:form.submit name="mySubmit" value="Send Mail"><button>dummy button</button></f:form.submit>
  *
  * Output::
  *

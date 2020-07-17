@@ -360,7 +360,6 @@ class AdministrationRepository
 
         while ($row = $res->fetch()) {
             $this->addAdditionalInformation($row);
-            $row['static_page_arguments'] = $row['static_page_arguments'] ? json_decode($row['static_page_arguments'], true) : null;
             $result[] = $row;
 
             if ($row['pcount'] > 1) {
@@ -410,6 +409,7 @@ class AdministrationRepository
                 )
             )
             ->groupBy('word')
+            ->orderBy('c', 'desc')
             ->setMaxResults((int)$max);
 
         if (!empty($additionalWhere)) {
@@ -417,7 +417,9 @@ class AdministrationRepository
         }
 
         $result = $queryBuilder->execute();
-        $count = (int)$queryBuilder
+        $countQueryBuilder = clone $queryBuilder;
+        $countQueryBuilder->resetQueryPart('orderBy');
+        $count = (int)$countQueryBuilder
             ->count('uid')
             ->execute()
             ->fetchColumn(0);

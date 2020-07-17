@@ -97,9 +97,17 @@ class SystemEnvironmentBuilder
         GeneralUtility::presetApplicationContext($applicationContext);
     }
 
+    /**
+     * Some notes:
+     *
+     * HTTP_TYPO3_CONTEXT -> used with Apache suexec support
+     * REDIRECT_TYPO3_CONTEXT -> used under some circumstances when value is set in the webserver and proxying the values to FPM
+     * @return ApplicationContext
+     * @throws \TYPO3\CMS\Core\Exception
+     */
     protected static function createApplicationContext(): ApplicationContext
     {
-        $applicationContext = getenv('TYPO3_CONTEXT') ?: (getenv('REDIRECT_TYPO3_CONTEXT') ?: 'Production');
+        $applicationContext = getenv('TYPO3_CONTEXT') ?: (getenv('REDIRECT_TYPO3_CONTEXT') ?: (getenv('HTTP_TYPO3_CONTEXT') ?: 'Production'));
 
         return new ApplicationContext($applicationContext);
     }
@@ -115,7 +123,7 @@ class SystemEnvironmentBuilder
         }
 
         // This version, branch and copyright
-        define('TYPO3_version', '9.5.6-dev');
+        define('TYPO3_version', '9.5.20-dev');
         define('TYPO3_branch', '9.5');
         define('TYPO3_copyright_year', '1998-' . date('Y'));
 
@@ -148,9 +156,9 @@ class SystemEnvironmentBuilder
         defined('SUB') ?: define('SUB', chr(26));
 
         // Security related constant: Default value of fileDenyPattern
-        define('FILE_DENY_PATTERN_DEFAULT', '\\.(php[3-7]?|phpsh|phtml|pht|phar|shtml|cgi)(\\..*)?$|\\.pl$|^\\.htaccess$');
+        define('FILE_DENY_PATTERN_DEFAULT', '\\.(php[3-8]?|phpsh|phtml|pht|phar|shtml|cgi)(\\..*)?$|\\.pl$|^\\.htaccess$');
         // Security related constant: List of file extensions that should be registered as php script file extensions
-        define('PHP_EXTENSIONS_DEFAULT', 'php,php3,php4,php5,php6,php7,phpsh,inc,phtml,pht,phar');
+        define('PHP_EXTENSIONS_DEFAULT', 'php,php3,php4,php5,php6,php7,php8,phpsh,inc,phtml,pht,phar');
 
         // Operating system identifier
         // Either "WIN" or empty string

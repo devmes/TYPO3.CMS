@@ -15,11 +15,10 @@ namespace TYPO3\CMS\Frontend\Tests\Functional\SiteHandling;
  * The TYPO3 project - inspiring people to share!
  */
 
-use TYPO3\CMS\Core\Configuration\SiteConfiguration;
+use TYPO3\CMS\Core\Tests\Functional\SiteHandling\SiteBasedTestTrait;
 use TYPO3\CMS\Core\Utility\ArrayUtility;
 use TYPO3\CMS\Frontend\Page\CacheHashCalculator;
 use TYPO3\CMS\Frontend\Tests\Functional\SiteHandling\Fixtures\LinkHandlingController;
-use TYPO3\CMS\Frontend\Tests\Functional\SiteHandling\Fixtures\PhpError;
 use TYPO3\TestingFramework\Core\Functional\Framework\Frontend\Internal\ArrayValueInstruction;
 use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
 
@@ -28,6 +27,8 @@ use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
  */
 abstract class AbstractTestCase extends FunctionalTestCase
 {
+    use SiteBasedTestTrait;
+
     protected const ENCRYPTION_KEY = '4408d27a916d51e624b69af3554f516dbab61037a9f7b9fd6f81b4d3bedeccb6';
 
     protected const TYPO3_CONF_VARS = [
@@ -36,7 +37,7 @@ abstract class AbstractTestCase extends FunctionalTestCase
         ],
         'FE' => [
             'cacheHash' => [
-                'requireCacheHashPresenceParameters' => ['testing[value]']
+                'requireCacheHashPresenceParameters' => ['value', 'testing[value]', 'tx_testing_link[value]']
             ],
         ]
     ];
@@ -45,6 +46,7 @@ abstract class AbstractTestCase extends FunctionalTestCase
         'EN' => ['id' => 0, 'title' => 'English', 'locale' => 'en_US.UTF8', 'iso' => 'en', 'hrefLang' => 'en-US', 'direction' => ''],
         'FR' => ['id' => 1, 'title' => 'French', 'locale' => 'fr_FR.UTF8', 'iso' => 'fr', 'hrefLang' => 'fr-FR', 'direction' => ''],
         'FR-CA' => ['id' => 2, 'title' => 'Franco-Canadian', 'locale' => 'fr_CA.UTF8', 'iso' => 'fr', 'hrefLang' => 'fr-CA', 'direction' => ''],
+        'ES' => ['id' => 3, 'title' => 'Spanish', 'locale' => 'es_ES.UTF8', 'iso' => 'es', 'hrefLang' => 'es-ES', 'direction' => ''],
     ];
 
     /**
@@ -58,39 +60,6 @@ abstract class AbstractTestCase extends FunctionalTestCase
     protected $pathsToLinkInTestInstance = [
         'typo3/sysext/core/Tests/Functional/Fixtures/Frontend/AdditionalConfiguration.php' => 'typo3conf/AdditionalConfiguration.php',
     ];
-
-    /**
-     * Combines string values of multiple array as cross-product into flat items.
-     *
-     * Example:
-     * + meltStrings(['a','b'], ['c','e'], ['f','g'])
-     * + results into ['acf', 'acg', 'aef', 'aeg', 'bcf', 'bcg', 'bef', 'beg']
-     *
-     * @param array $arrays Distinct array that should be melted
-     * @param callable $finalCallback Callback being executed on last multiplier
-     * @param string $prefix Prefix containing concatenated previous values
-     * @return array
-     */
-    protected function meltStrings(array $arrays, callable $finalCallback = null, string $prefix = ''): array
-    {
-        $results = [];
-        $array = array_shift($arrays);
-        foreach ($array as $item) {
-            $resultItem = $prefix . $item;
-            if (count($arrays) > 0) {
-                $results = array_merge(
-                    $results,
-                    $this->meltStrings($arrays, $finalCallback, $resultItem)
-                );
-                continue;
-            }
-            if ($finalCallback !== null) {
-                $resultItem = call_user_func($finalCallback, $resultItem);
-            }
-            $results[] = $resultItem;
-        }
-        return $results;
-    }
 
     /**
      * @param array $array
@@ -170,187 +139,6 @@ abstract class AbstractTestCase extends FunctionalTestCase
     }
 
     /**
-     * @param string $identifier
-     * @param array $site
-     * @param array $languages
-     * @param array $errorHandling
-     */
-    protected function writeSiteConfiguration(
-        string $identifier,
-        array $site = [],
-        array $languages = [],
-        array $errorHandling = []
-    ) {
-        $configuration = $site;
-        if (!empty($languages)) {
-            $configuration['languages'] = $languages;
-        }
-        if (!empty($errorHandling)) {
-            $configuration['errorHandling'] = $errorHandling;
-        }
-
-        $siteConfiguration = new SiteConfiguration(
-            $this->instancePath . '/typo3conf/sites/'
-        );
-
-        try {
-            $siteConfiguration->write($identifier, $configuration);
-        } catch (\Exception $exception) {
-            $this->markTestSkipped($exception->getMessage());
-        }
-    }
-
-    /**
-     * @param string $identifier
-     * @param array $overrides
-     */
-    protected function mergeSiteConfiguration(
-        string $identifier,
-        array $overrides
-    ) {
-        $siteConfiguration = new SiteConfiguration(
-            $this->instancePath . '/typo3conf/sites/'
-        );
-        $configuration = $siteConfiguration->load($identifier);
-        $configuration = array_merge($configuration, $overrides);
-        try {
-            $siteConfiguration->write($identifier, $configuration);
-        } catch (\Exception $exception) {
-            $this->markTestSkipped($exception->getMessage());
-        }
-    }
-
-    /**
-     * @param int $rootPageId
-     * @param string $base
-     * @return array
-     */
-    protected function buildSiteConfiguration(
-        int $rootPageId,
-        string $base = ''
-    ): array {
-        return [
-            'rootPageId' => $rootPageId,
-            'base' => $base,
-        ];
-    }
-
-    /**
-     * @param string $identifier
-     * @param string $base
-     * @return array
-     */
-    protected function buildDefaultLanguageConfiguration(
-        string $identifier,
-        string $base
-    ): array {
-        $configuration = $this->buildLanguageConfiguration($identifier, $base);
-        $configuration['typo3Language'] = 'default';
-        $configuration['flag'] = 'global';
-        unset($configuration['fallbackType'], $configuration['fallbacks']);
-        return $configuration;
-    }
-
-    /**
-     * @param string $identifier
-     * @param string $base
-     * @param array $fallbackIdentifiers
-     * @return array
-     */
-    protected function buildLanguageConfiguration(
-        string $identifier,
-        string $base,
-        array $fallbackIdentifiers = []
-    ): array {
-        $preset = $this->resolveLanguagePreset($identifier);
-
-        $configuration = [
-            'languageId' => $preset['id'],
-            'title' => $preset['title'],
-            'navigationTitle' => $preset['title'],
-            'base' => $base,
-            'locale' => $preset['locale'],
-            'iso-639-1' => $preset['iso'],
-            'hreflang' => $preset['hrefLang'],
-            'direction' => $preset['direction'],
-            'typo3Language' => $preset['iso'],
-            'flag' => $preset['iso'],
-            'fallbackType' => 'strict',
-        ];
-
-        if (!empty($fallbackIdentifiers)) {
-            $fallbackIds = array_map(
-                function (string $fallbackIdentifier) {
-                    $preset = $this->resolveLanguagePreset($fallbackIdentifier);
-                    return $preset['id'];
-                },
-                $fallbackIdentifiers
-            );
-            $configuration['fallbackType'] = 'fallback';
-            $configuration['fallbacks'] = implode(',', $fallbackIds);
-        }
-
-        return $configuration;
-    }
-
-    /**
-     * @param string $handler
-     * @param array $codes
-     * @return array
-     */
-    protected function buildErrorHandlingConfiguration(
-        string $handler,
-        array $codes
-    ): array {
-        if ($handler === 'Page') {
-            $baseConfiguration = [
-                'errorContentSource' => '404',
-            ];
-        } elseif ($handler === 'Fluid') {
-            $baseConfiguration = [
-                'errorFluidTemplate' => 'typo3/sysext/frontend/Tests/Functional/SiteHandling/Fixtures/FluidError.html',
-                'errorFluidTemplatesRootPath' => '',
-                'errorFluidLayoutsRootPath' => '',
-                'errorFluidPartialsRootPath' => '',
-            ];
-        } elseif ($handler === 'PHP') {
-            $baseConfiguration = [
-                'errorPhpClassFQCN' => PhpError::class,
-            ];
-        } else {
-            throw new \LogicException(
-                sprintf('Invalid handler "%s"', $handler),
-                1533894782
-            );
-        }
-
-        $baseConfiguration['errorHandler'] = $handler;
-
-        return array_map(
-            function (int $code) use ($baseConfiguration) {
-                $baseConfiguration['errorCode'] = $code;
-                return $baseConfiguration;
-            },
-            $codes
-        );
-    }
-
-    /**
-     * @param string $identifier
-     * @return mixed
-     */
-    protected function resolveLanguagePreset(string $identifier)
-    {
-        if (!isset(static::LANGUAGE_PRESETS[$identifier])) {
-            throw new \LogicException(
-                sprintf('Undefined preset identifier "%s"', $identifier),
-                1533893665
-            );
-        }
-        return static::LANGUAGE_PRESETS[$identifier];
-    }
-
-    /**
      * @param string $uri
      * @return string
      */
@@ -404,7 +192,7 @@ abstract class AbstractTestCase extends FunctionalTestCase
             ->withArray([
                 '10' => 'FLUIDTEMPLATE',
                 '10.' => [
-                    'file' => 'typo3/sysext/frontend/Tests/Functional/SiteHandling/Fixtures/FluidJson.html',
+                    'file' => 'typo3/sysext/core/Tests/Functional/Fixtures/Frontend/FluidJson.html',
                     'dataProcessing.' => [
                         '1' => 'TYPO3\\CMS\\Frontend\\DataProcessing\\MenuProcessor',
                         '1.' => array_merge(
@@ -426,7 +214,7 @@ abstract class AbstractTestCase extends FunctionalTestCase
             ->withArray([
                 '10' => 'FLUIDTEMPLATE',
                 '10.' => [
-                    'file' => 'typo3/sysext/frontend/Tests/Functional/SiteHandling/Fixtures/FluidJson.html',
+                    'file' => 'typo3/sysext/core/Tests/Functional/Fixtures/Frontend/FluidJson.html',
                     'dataProcessing.' => [
                         '1' => 'TYPO3\\CMS\\Frontend\\DataProcessing\\LanguageMenuProcessor',
                         '1.' => array_merge(
@@ -471,19 +259,5 @@ abstract class AbstractTestCase extends FunctionalTestCase
             },
             $menu
         );
-    }
-
-    /**
-     * @param array $keys
-     * @param mixed $payload
-     * @return array
-     */
-    protected function populateToKeys(array $keys, $payload): array
-    {
-        $result = [];
-        foreach ($keys as $key) {
-            $result[$key] = $payload;
-        }
-        return $result;
     }
 }

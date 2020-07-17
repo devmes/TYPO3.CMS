@@ -19,6 +19,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerAwareTrait;
+use Symfony\Component\HttpFoundation\Cookie;
 use TYPO3\CMS\Backend\Exception;
 use TYPO3\CMS\Backend\LoginProvider\LoginProviderInterface;
 use TYPO3\CMS\Backend\Routing\UriBuilder;
@@ -26,10 +27,12 @@ use TYPO3\CMS\Backend\Template\DocumentTemplate;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Authentication\BackendUserAuthentication;
 use TYPO3\CMS\Core\Configuration\ExtensionConfiguration;
+use TYPO3\CMS\Core\Configuration\Features;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\FormProtection\BackendFormProtection;
 use TYPO3\CMS\Core\FormProtection\FormProtectionFactory;
 use TYPO3\CMS\Core\Http\HtmlResponse;
+use TYPO3\CMS\Core\Http\NormalizedParams;
 use TYPO3\CMS\Core\Localization\LanguageService;
 use TYPO3\CMS\Core\Localization\Locales;
 use TYPO3\CMS\Core\Page\PageRenderer;
@@ -106,8 +109,6 @@ class LoginController implements LoggerAwareInterface
         $queryParams = $request->getQueryParams();
         $this->validateAndSortLoginProviders();
 
-        // We need a PHP session session for most login levels
-        session_start();
         $this->redirectUrl = GeneralUtility::sanitizeLocalUrl($parsedBody['redirect_url'] ?? $queryParams['redirect_url'] ?? null);
         $this->loginProviderIdentifier = $this->detectLoginProvider($request);
 
@@ -134,6 +135,7 @@ class LoginController implements LoggerAwareInterface
         if ($this->redirectUrl) {
             $this->redirectToURL = $this->redirectUrl;
         } else {
+            // (consolidate RouteDispatcher::evaluateReferrer() when changing 'main' to something different)
             $uriBuilder = GeneralUtility::makeInstance(UriBuilder::class);
             $this->redirectToURL = (string)$uriBuilder->buildUriFromRoute('main');
         }
@@ -280,6 +282,8 @@ class LoginController implements LoggerAwareInterface
             'redirectUrl' => $this->redirectUrl,
             'loginRefresh' => $this->loginRefresh,
             'loginNewsItems' => $this->getSystemNews(),
+            'referrerCheckEnabled' => GeneralUtility::makeInstance(Features::class)->isFeatureEnabled('security.backend.enforceReferrer'),
+            'loginUrl' => (string)GeneralUtility::makeInstance(UriBuilder::class)->buildUriFromRoute('login'),
             'loginProviderIdentifier' => $this->loginProviderIdentifier,
             'loginProviders' => $this->loginProviders
         ]);
@@ -344,6 +348,7 @@ class LoginController implements LoggerAwareInterface
                     $this->redirectToURL = '../';
                     break;
                 case 'backend':
+                    // (consolidate RouteDispatcher::evaluateReferrer() when changing 'main' to something different)
                     $uriBuilder = GeneralUtility::makeInstance(UriBuilder::class);
                     $this->redirectToURL = (string)$uriBuilder->buildUriFromRoute('main');
                     break;
@@ -565,11 +570,24 @@ class LoginController implements LoggerAwareInterface
             reset($this->loginProviders);
             $loginProvider = key($this->loginProviders);
         }
-        // Use the secure option when the current request is served by a secure connection:
+        // Use the secure option when the current request is served by a secure connection
+        /** @var NormalizedParams $normalizedParams */
         $normalizedParams = $request->getAttribute('normalizedParams');
         $isHttps = $normalizedParams->isHttps();
         $cookieSecure = (bool)$GLOBALS['TYPO3_CONF_VARS']['SYS']['cookieSecure'] && $isHttps;
-        setcookie('be_lastLoginProvider', (string)$loginProvider, $GLOBALS['EXEC_TIME'] + 7776000, '', '', $cookieSecure, true); // 90 days
+        $cookie = new Cookie(
+            'be_lastLoginProvider',
+            (string)$loginProvider,
+            $GLOBALS['EXEC_TIME'] + 7776000, // 90 days
+            $normalizedParams->getSitePath() . TYPO3_mainDir,
+            '',
+            $cookieSecure,
+            true,
+            false,
+            Cookie::SAMESITE_STRICT
+        );
+        header('Set-Cookie: ' . $cookie->__toString(), false);
+
         return (string)$loginProvider;
     }
 

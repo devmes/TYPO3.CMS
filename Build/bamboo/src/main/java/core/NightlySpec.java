@@ -13,11 +13,8 @@ package core;
  * The TYPO3 project - inspiring people to share!
  */
 
-import java.util.ArrayList;
-
 import com.atlassian.bamboo.specs.api.BambooSpec;
 import com.atlassian.bamboo.specs.api.builders.AtlassianModule;
-import com.atlassian.bamboo.specs.api.builders.BambooKey;
 import com.atlassian.bamboo.specs.api.builders.Variable;
 import com.atlassian.bamboo.specs.api.builders.notification.AnyNotificationRecipient;
 import com.atlassian.bamboo.specs.api.builders.notification.Notification;
@@ -27,11 +24,12 @@ import com.atlassian.bamboo.specs.api.builders.plan.Stage;
 import com.atlassian.bamboo.specs.api.builders.plan.branches.BranchCleanup;
 import com.atlassian.bamboo.specs.api.builders.plan.branches.PlanBranchManagement;
 import com.atlassian.bamboo.specs.api.builders.project.Project;
+import com.atlassian.bamboo.specs.api.builders.task.Task;
 import com.atlassian.bamboo.specs.builders.notification.PlanCompletedNotification;
-import com.atlassian.bamboo.specs.builders.task.ScriptTask;
 import com.atlassian.bamboo.specs.builders.trigger.ScheduledTrigger;
-import com.atlassian.bamboo.specs.model.task.ScriptTaskProperties;
 import com.atlassian.bamboo.specs.util.BambooServer;
+
+import java.util.ArrayList;
 
 /**
  * Core 9.5 nightly test plan.
@@ -39,15 +37,17 @@ import com.atlassian.bamboo.specs.util.BambooServer;
 @BambooSpec
 public class NightlySpec extends AbstractCoreSpec {
 
-    protected static String planName = "Core 9.5 nightly";
-    protected static String planKey = "GTN95";
+    private static String planName = "Core 9.5 nightly";
+    private static String planKey = "GTN95";
 
-    protected int numberOfAcceptanceTestJobs = 8;
-    protected int numberOfFunctionalMysqlJobs = 6;
-    protected int numberOfFunctionalMssqlJobs = 16;
-    protected int numberOfFunctionalPgsqlJobs = 6;
-    protected int numberOfFunctionalSqliteJobs = 6;
-    protected int numberOfUnitRandomOrderJobs = 2;
+    private static int numberOfAcceptanceTestJobs = 8;
+    private static int numberOfFunctionalMysqlJobs = 6;
+    private static int numberOfFunctionalMssqlJobs = 16;
+    private static int numberOfFunctionalPgsqlJobs = 6;
+    private static int numberOfFunctionalSqliteJobs = 6;
+    private static int numberOfUnitRandomOrderJobs = 2;
+
+    private String[] phpVersions = {"PHP72", "PHP73", "PHP74"};
 
     /**
      * Run main to publish plan on Bamboo
@@ -62,186 +62,327 @@ public class NightlySpec extends AbstractCoreSpec {
     /**
      * Core 9.5 pre-merge plan is in "TYPO3 core" project of bamboo
      */
-    Project project() {
-        return new Project().name(projectName).key(projectKey);
+    private Project project() {
+        return new Project().name(projectName)
+                .key(projectKey);
     }
 
     /**
      * Returns full Plan definition
      */
     Plan createPlan() {
-        // PREPARATION stage
-        ArrayList<Job> jobsPreparationStage = new ArrayList<Job>();
-        jobsPreparationStage.add(this.getJobBuildLabels());
-        Stage stagePreparation = new Stage("Preparation")
-            .jobs(jobsPreparationStage.toArray(new Job[jobsPreparationStage.size()]));
-
-
-        // MAIN stage
-        ArrayList<Job> jobsMainStage = new ArrayList<Job>();
-
-        jobsMainStage.add(this.getJobComposerValidate("PHP72"));
-
-        jobsMainStage.add(this.getJobAcceptanceTestInstallMysql(0, "PHP72", this.getTaskComposerInstall("PHP72")));
-        jobsMainStage.add(this.getJobAcceptanceTestInstallMysql(0, "PHP73", this.getTaskComposerInstall("PHP73")));
-        jobsMainStage.add(this.getJobAcceptanceTestInstallPgsql(0, "PHP72", this.getTaskComposerInstall("PHP72")));
-        jobsMainStage.add(this.getJobAcceptanceTestInstallPgsql(0, "PHP73", this.getTaskComposerInstall("PHP73")));
-        jobsMainStage.add(this.getJobAcceptanceTestInstallSqlite(0, "PHP72", this.getTaskComposerInstall("PHP72")));
-        jobsMainStage.add(this.getJobAcceptanceTestInstallSqlite(0, "PHP73", this.getTaskComposerInstall("PHP73")));
-
-        jobsMainStage.addAll(this.getJobsAcceptanceTestsBackendMysql(0, this.numberOfAcceptanceTestJobs, "PHP72", this.getTaskComposerInstall("PHP72")));
-        jobsMainStage.addAll(this.getJobsAcceptanceTestsBackendMysql(0, this.numberOfAcceptanceTestJobs, "PHP73", this.getTaskComposerInstall("PHP73")));
-
-        jobsMainStage.add(this.getJobCglCheckFullCore(0, "PHP72", this.getTaskComposerInstall("PHP72")));
-
-        jobsMainStage.add(this.getJobIntegrationAnnotations(0, "PHP72", this.getTaskComposerInstall("PHP72")));
-
-        jobsMainStage.add(this.getJobIntegrationVarious(0, "PHP72", this.getTaskComposerInstall("PHP72")));
-
-        jobsMainStage.addAll(this.getJobsFunctionalTestsMysql(0, this.numberOfFunctionalMysqlJobs, "PHP72", this.getTaskComposerInstall("PHP72")));
-        jobsMainStage.addAll(this.getJobsFunctionalTestsMysql(0, this.numberOfFunctionalMysqlJobs, "PHP73", this.getTaskComposerInstall("PHP73")));
-        jobsMainStage.addAll(this.getJobsFunctionalTestsMssql(0, this.numberOfFunctionalMssqlJobs, "PHP72", this.getTaskComposerInstall("PHP72")));
-        // no mssql with php 7.3 yet
-        // jobsMainStage.addAll(this.getJobsFunctionalTestsMssql(0, this.numberOfFunctionalMssqlJobs, "PHP73", this.getTaskComposerInstall("PHP73")));
-        jobsMainStage.addAll(this.getJobsFunctionalTestsPgsql(0, this.numberOfFunctionalPgsqlJobs, "PHP72", this.getTaskComposerInstall("PHP72")));
-        jobsMainStage.addAll(this.getJobsFunctionalTestsPgsql(0, this.numberOfFunctionalPgsqlJobs, "PHP73", this.getTaskComposerInstall("PHP73")));
-        jobsMainStage.addAll(this.getJobsFunctionalTestsSqlite(0, this.numberOfFunctionalSqliteJobs, "PHP72", this.getTaskComposerInstall("PHP72")));
-        jobsMainStage.addAll(this.getJobsFunctionalTestsSqlite(0, this.numberOfFunctionalSqliteJobs, "PHP73", this.getTaskComposerInstall("PHP73")));
-
-        jobsMainStage.add(this.getJobUnitJavaScript(0, "PHP72", this.getTaskComposerInstall("PHP72")));
-
-        jobsMainStage.add(this.getJobLintPhp("PHP72"));
-        jobsMainStage.add(this.getJobLintPhp("PHP73"));
-
-        jobsMainStage.add(this.getJobLintScssTs("PHP72"));
-
-        jobsMainStage.add(this.getJobUnitPhp(0, "PHP72", this.getTaskComposerInstall("PHP72")));
-        jobsMainStage.add(this.getJobUnitPhp(0, "PHP73", this.getTaskComposerInstall("PHP73")));
-        jobsMainStage.add(this.getJobUnitDeprecatedPhp(0, "PHP72", this.getTaskComposerInstall("PHP72")));
-        jobsMainStage.add(this.getJobUnitDeprecatedPhp(0, "PHP73", this.getTaskComposerInstall("PHP73")));
-        jobsMainStage.addAll(this.getJobUnitPhpRandom(0, this.numberOfUnitRandomOrderJobs, "PHP72", this.getTaskComposerInstall("PHP72")));
-        jobsMainStage.addAll(this.getJobUnitPhpRandom(0, this.numberOfUnitRandomOrderJobs, "PHP73", this.getTaskComposerInstall("PHP73")));
-
-        Stage stageMainStage = new Stage("Main stage")
-            .jobs(jobsMainStage.toArray(new Job[jobsMainStage.size()]));
-
-
-        // COMPOSER UPDATE MAX stage
-        ArrayList<Job> jobsComposerMaxStage = new ArrayList<Job>();
-
-        jobsComposerMaxStage.add(this.getJobAcceptanceTestInstallMysql(1, "PHP72", this.getTaskComposerUpdateMax("PHP72")));
-        jobsComposerMaxStage.add(this.getJobAcceptanceTestInstallMysql(1, "PHP73", this.getTaskComposerUpdateMax("PHP73")));
-        jobsComposerMaxStage.add(this.getJobAcceptanceTestInstallPgsql(1, "PHP72", this.getTaskComposerUpdateMax("PHP72")));
-        jobsComposerMaxStage.add(this.getJobAcceptanceTestInstallPgsql(1, "PHP73", this.getTaskComposerUpdateMax("PHP73")));
-        jobsComposerMaxStage.add(this.getJobAcceptanceTestInstallSqlite(1, "PHP72", this.getTaskComposerUpdateMax("PHP72")));
-        jobsComposerMaxStage.add(this.getJobAcceptanceTestInstallSqlite(1, "PHP73", this.getTaskComposerUpdateMax("PHP73")));
-
-        jobsComposerMaxStage.addAll(this.getJobsAcceptanceTestsBackendMysql(1, this.numberOfAcceptanceTestJobs, "PHP72", this.getTaskComposerUpdateMax("PHP72")));
-        jobsComposerMaxStage.addAll(this.getJobsAcceptanceTestsBackendMysql(1, this.numberOfAcceptanceTestJobs, "PHP73", this.getTaskComposerUpdateMax("PHP73")));
-
-        jobsComposerMaxStage.add(this.getJobCglCheckFullCore(1, "PHP72", this.getTaskComposerUpdateMax("PHP72")));
-
-        jobsComposerMaxStage.add(this.getJobIntegrationAnnotations(1, "PHP72", this.getTaskComposerUpdateMax("PHP72")));
-
-        jobsComposerMaxStage.add(this.getJobIntegrationVarious(1, "PHP72", this.getTaskComposerUpdateMax("PHP72")));
-
-        jobsComposerMaxStage.addAll(this.getJobsFunctionalTestsMysql(1, this.numberOfFunctionalMysqlJobs, "PHP72", this.getTaskComposerUpdateMax("PHP72")));
-        jobsComposerMaxStage.addAll(this.getJobsFunctionalTestsMysql(1, this.numberOfFunctionalMysqlJobs, "PHP73", this.getTaskComposerUpdateMax("PHP73")));
-        jobsComposerMaxStage.addAll(this.getJobsFunctionalTestsMssql(1, this.numberOfFunctionalMssqlJobs, "PHP72", this.getTaskComposerUpdateMax("PHP72")));
-        // no mssql with php 7.3 yet
-        // jobsComposerMaxStage.addAll(this.getJobsFunctionalTestsMssql(1, this.numberOfFunctionalMssqlJobs, "PHP73", this.getTaskComposerUpdateMax("PHP73")));
-        jobsComposerMaxStage.addAll(this.getJobsFunctionalTestsPgsql(1, this.numberOfFunctionalPgsqlJobs, "PHP72", this.getTaskComposerUpdateMax("PHP72")));
-        jobsComposerMaxStage.addAll(this.getJobsFunctionalTestsPgsql(1, this.numberOfFunctionalPgsqlJobs, "PHP73", this.getTaskComposerUpdateMax("PHP73")));
-        jobsComposerMaxStage.addAll(this.getJobsFunctionalTestsSqlite(1, this.numberOfFunctionalSqliteJobs, "PHP72", this.getTaskComposerUpdateMax("PHP72")));
-        jobsComposerMaxStage.addAll(this.getJobsFunctionalTestsSqlite(1, this.numberOfFunctionalSqliteJobs, "PHP73", this.getTaskComposerUpdateMax("PHP73")));
-
-        jobsComposerMaxStage.add(this.getJobUnitJavaScript(1, "PHP72", this.getTaskComposerUpdateMax("PHP72")));
-
-        jobsComposerMaxStage.add(this.getJobUnitPhp(1, "PHP72", this.getTaskComposerUpdateMax("PHP72")));
-        jobsComposerMaxStage.add(this.getJobUnitPhp(1, "PHP73", this.getTaskComposerUpdateMax("PHP73")));
-        jobsComposerMaxStage.add(this.getJobUnitDeprecatedPhp(1, "PHP72", this.getTaskComposerUpdateMax("PHP72")));
-        jobsComposerMaxStage.add(this.getJobUnitDeprecatedPhp(1, "PHP73", this.getTaskComposerUpdateMax("PHP73")));
-
-        // Disabled for now since young phpunit with built-in randomizer collides with this one. Needs investigation.
-        jobsComposerMaxStage.addAll(this.getJobUnitPhpRandom(1, this.numberOfUnitRandomOrderJobs, "PHP72", this.getTaskComposerUpdateMax("PHP72")));
-        jobsComposerMaxStage.addAll(this.getJobUnitPhpRandom(1, this.numberOfUnitRandomOrderJobs, "PHP73", this.getTaskComposerUpdateMax("PHP73")));
-
-        Stage stageComposerMaxStage = new Stage("Composer update max")
-            .jobs(jobsComposerMaxStage.toArray(new Job[jobsComposerMaxStage.size()]));
-
-        // COMPOSER UPDATE MIN stage
-        ArrayList<Job> jobsComposerMinStage = new ArrayList<Job>();
-
-        jobsComposerMinStage.add(this.getJobAcceptanceTestInstallMysql(2, "PHP72", this.getTaskComposerUpdateMin("PHP72")));
-        jobsComposerMinStage.add(this.getJobAcceptanceTestInstallMysql(2, "PHP73", this.getTaskComposerUpdateMin("PHP73")));
-        jobsComposerMinStage.add(this.getJobAcceptanceTestInstallPgsql(2, "PHP72", this.getTaskComposerUpdateMin("PHP72")));
-        jobsComposerMinStage.add(this.getJobAcceptanceTestInstallPgsql(2, "PHP73", this.getTaskComposerUpdateMin("PHP73")));
-        jobsComposerMinStage.add(this.getJobAcceptanceTestInstallSqlite(2, "PHP72", this.getTaskComposerUpdateMin("PHP72")));
-        jobsComposerMinStage.add(this.getJobAcceptanceTestInstallSqlite(2, "PHP73", this.getTaskComposerUpdateMin("PHP73")));
-
-        jobsComposerMinStage.addAll(this.getJobsAcceptanceTestsBackendMysql(2, this.numberOfAcceptanceTestJobs, "PHP72", this.getTaskComposerUpdateMin("PHP72")));
-        jobsComposerMinStage.addAll(this.getJobsAcceptanceTestsBackendMysql(2, this.numberOfAcceptanceTestJobs, "PHP73", this.getTaskComposerUpdateMin("PHP73")));
-
-        jobsComposerMinStage.add(this.getJobCglCheckFullCore(2, "PHP72", this.getTaskComposerUpdateMin("PHP72")));
-
-        jobsComposerMinStage.add(this.getJobIntegrationAnnotations(2, "PHP72", this.getTaskComposerUpdateMin("PHP72")));
-
-        jobsComposerMinStage.add(this.getJobIntegrationVarious(2, "PHP72", this.getTaskComposerUpdateMin("PHP72")));
-
-        jobsComposerMinStage.addAll(this.getJobsFunctionalTestsMysql(2, this.numberOfFunctionalMysqlJobs, "PHP72", this.getTaskComposerUpdateMin("PHP72")));
-        jobsComposerMinStage.addAll(this.getJobsFunctionalTestsMysql(2, this.numberOfFunctionalMysqlJobs, "PHP73", this.getTaskComposerUpdateMin("PHP73")));
-        jobsComposerMinStage.addAll(this.getJobsFunctionalTestsMssql(2, this.numberOfFunctionalMssqlJobs, "PHP72", this.getTaskComposerUpdateMin("PHP72")));
-        // no mssql with php 7.3 yet
-        // jobsComposerMinStage.addAll(this.getJobsFunctionalTestsMssql(2, this.numberOfFunctionalMssqlJobs, "PHP73", this.getTaskComposerUpdateMin("PHP73")));
-        jobsComposerMinStage.addAll(this.getJobsFunctionalTestsPgsql(2, this.numberOfFunctionalPgsqlJobs, "PHP72", this.getTaskComposerUpdateMin("PHP72")));
-        jobsComposerMinStage.addAll(this.getJobsFunctionalTestsPgsql(2, this.numberOfFunctionalPgsqlJobs, "PHP73", this.getTaskComposerUpdateMin("PHP73")));
-        jobsComposerMinStage.addAll(this.getJobsFunctionalTestsSqlite(2, this.numberOfFunctionalSqliteJobs, "PHP72", this.getTaskComposerUpdateMin("PHP72")));
-        jobsComposerMinStage.addAll(this.getJobsFunctionalTestsSqlite(2, this.numberOfFunctionalSqliteJobs, "PHP73", this.getTaskComposerUpdateMin("PHP73")));
-
-        jobsComposerMinStage.add(this.getJobUnitJavaScript(2, "PHP72", this.getTaskComposerUpdateMin("PHP72")));
-
-        jobsComposerMinStage.add(this.getJobUnitPhp(2, "PHP72", this.getTaskComposerUpdateMin("PHP72")));
-        jobsComposerMinStage.add(this.getJobUnitPhp(2, "PHP73", this.getTaskComposerUpdateMin("PHP73")));
-        jobsComposerMinStage.add(this.getJobUnitDeprecatedPhp(2, "PHP72", this.getTaskComposerUpdateMin("PHP72")));
-        jobsComposerMinStage.add(this.getJobUnitDeprecatedPhp(2, "PHP73", this.getTaskComposerUpdateMin("PHP73")));
-        jobsComposerMinStage.addAll(this.getJobUnitPhpRandom(2, this.numberOfUnitRandomOrderJobs, "PHP72", this.getTaskComposerUpdateMin("PHP72")));
-        jobsComposerMinStage.addAll(this.getJobUnitPhpRandom(2, this.numberOfUnitRandomOrderJobs, "PHP73", this.getTaskComposerUpdateMin("PHP73")));
-
-        Stage stageComposerMinStage = new Stage("Composer update min")
-            .jobs(jobsComposerMinStage.toArray(new Job[jobsComposerMinStage.size()]));
+        ArrayList<Stage> stages = new ArrayList<>();
+        stages.add(getPreparationStage());
+        stages.add(getIntegrityStage());
+        stages.addAll(getUnitTestStages());
+        stages.addAll(getCodeceptionMySqlStages());
+        stages.addAll(getFunctionalMsSqlStagesPHP73());
+        stages.addAll(getCodeceptionSqLiteStages());
+        stages.addAll(getCodeceptionPgSqlStages());
+        stages.addAll(getFunctionalMsSqlStagesPHP74());
+        stages.addAll(getFunctionalMySqlStagesPHP72());
+        stages.addAll(getFunctionalMySqlStagesPHP73());
+        stages.addAll(getFunctionalMySqlStagesPHP74());
+        stages.addAll(getFunctionalPGSqlStages());
+        stages.addAll(getFunctionalSqliteStages());
+        stages.addAll(getFunctionalMsSqlStagesPHP72());
 
         // Compile plan
-        return new Plan(project(), planName, planKey)
-            .description("Execute TYPO3 core 9.5 nightly tests. Auto generated! See Build/bamboo of core git repository.")
-            .pluginConfigurations(this.getDefaultPlanPluginConfiguration())
-            .stages(
-                stagePreparation,
-                stageMainStage,
-                stageComposerMaxStage,
-                stageComposerMinStage
-            )
-            .linkedRepositories("github TYPO3 TYPO3.CMS 9.5")
-            .triggers(
-                new ScheduledTrigger()
-                    .name("Scheduled")
-                    .description("daily at night")
-                    // daily 03:23
-                    .cronExpression("0 31 5 ? * *")
-            )
-            .variables(
-                new Variable("changeUrl", ""),
-                new Variable("patchset", "")
-            )
-            .planBranchManagement(
-                new PlanBranchManagement()
-                    .delete(new BranchCleanup())
-                    .notificationForCommitters()
-            )
-            .notifications(new Notification()
-                .type(new PlanCompletedNotification())
-                .recipients(new AnyNotificationRecipient(new AtlassianModule("com.atlassian.bamboo.plugins.bamboo-slack:recipient.slack"))
-                    .recipientString("https://intercept.typo3.com/bamboo")
-                )
-            );
+        return new Plan(project(), planName, planKey).description("Execute TYPO3 core 9.5 nightly tests. Auto generated! See Build/bamboo of core git repository.")
+                .pluginConfigurations(this.getDefaultPlanPluginConfiguration())
+                .stages(stages.toArray(new Stage[0]))
+                .linkedRepositories("github TYPO3 TYPO3.CMS 9.5")
+                .triggers(new ScheduledTrigger().name("Scheduled")
+                        .description("once a day")
+                        .cronExpression("0 0 23 ? * *"))
+                .variables(new Variable("changeUrl", ""), new Variable("patchset", ""))
+                .planBranchManagement(new PlanBranchManagement().delete(new BranchCleanup())
+                        .notificationForCommitters())
+                .notifications(new Notification().type(new PlanCompletedNotification())
+                        .recipients(new AnyNotificationRecipient(new AtlassianModule("com.atlassian.bamboo.plugins.bamboo-slack:recipient.slack")).recipientString("https://intercept.typo3.com/bamboo")));
+
+    }
+
+    /**
+     * functional tests executed with DBMS Sqlite
+     */
+    private ArrayList<Stage> getFunctionalSqliteStages() {
+        ArrayList<Stage> stages = new ArrayList<>();
+        ArrayList<Job> jobs = new ArrayList<>();
+
+        // PHP 7.4, composer default
+        String phpVersion = "PHP74";
+        Task composerTask = getComposerTaskByStageNumber(phpVersion, COMPOSER_DEFAULT);
+        jobs.addAll(this.getJobsFunctionalTestsSqlite(COMPOSER_DEFAULT, numberOfFunctionalSqliteJobs, phpVersion, composerTask, false));
+
+        stages.add(new Stage("Functionals sqlite").jobs(jobs.toArray(new Job[0])));
+        return stages;
+    }
+
+    /**
+     * functional tests executed with DBMS PostgreSql
+     */
+    private ArrayList<Stage> getFunctionalPGSqlStages() {
+        ArrayList<Stage> stages = new ArrayList<>();
+        ArrayList<Job> jobs = new ArrayList<>();
+
+        // PHP 7.2, composer max
+        String phpVersion = "PHP72";
+        Task composerTask = getComposerTaskByStageNumber(phpVersion, COMPOSER_MAX);
+        jobs.addAll(this.getJobsFunctionalTestsPgsql(COMPOSER_MAX, numberOfFunctionalPgsqlJobs, phpVersion, composerTask, false));
+
+        // PHP 7.4, composer min
+        phpVersion = "PHP74";
+        composerTask = getComposerTaskByStageNumber(phpVersion, COMPOSER_MIN);
+        jobs.addAll(this.getJobsFunctionalTestsPgsql(COMPOSER_MIN, numberOfFunctionalPgsqlJobs, phpVersion, composerTask, false));
+
+        stages.add(new Stage("Functionals pgsql").jobs(jobs.toArray(new Job[0])));
+        return stages;
+    }
+
+    /**
+     * functional tests executed with DBMS MsSQL for PHP 7.2
+     */
+    private ArrayList<Stage> getFunctionalMsSqlStagesPHP72() {
+        ArrayList<Stage> stages = new ArrayList<>();
+
+        // PHP 7.2, composer min, pdo
+        String phpVersion = "PHP72";
+        Task composerTask = getComposerTaskByStageNumber(phpVersion, COMPOSER_MIN);
+        ArrayList<Job> jobs = new ArrayList<>(this.getJobsFunctionalTestsMssqlWithDriverPdoSqlSrv(COMPOSER_MIN, numberOfFunctionalMssqlJobs, phpVersion, composerTask, false));
+        stages.add(new Stage("Functionals mssql PHP 7.2").jobs(jobs.toArray(new Job[0])));
+        return stages;
+    }
+
+    /**
+     * functional tests executed with DBMS MsSQL for PHP 7.3
+     */
+    private ArrayList<Stage> getFunctionalMsSqlStagesPHP73() {
+        ArrayList<Stage> stages = new ArrayList<>();
+
+        // PHP 7.3, composer max, sqlsrv
+        String phpVersion = "PHP73";
+        Task composerTask = getComposerTaskByStageNumber(phpVersion, COMPOSER_MAX);
+        ArrayList<Job> jobs = new ArrayList<>(this.getJobsFunctionalTestsMssqlWithDriverSqlSrv(COMPOSER_MAX, numberOfFunctionalMssqlJobs, phpVersion, composerTask, false));
+        stages.add(new Stage("Functionals mssql PHP 7.3").jobs(jobs.toArray(new Job[0])));
+        return stages;
+    }
+
+    /**
+     * functional tests executed with DBMS MsSQL for PHP 7.4
+     */
+    private ArrayList<Stage> getFunctionalMsSqlStagesPHP74() {
+        ArrayList<Stage> stages = new ArrayList<>();
+
+        // PHP 7.4, composer default, sqlsrv
+        String phpVersion = "PHP74";
+        Task composerTask = getComposerTaskByStageNumber(phpVersion, COMPOSER_DEFAULT);
+        ArrayList<Job> jobs = new ArrayList<>(this.getJobsFunctionalTestsMssqlWithDriverSqlSrv(COMPOSER_DEFAULT, numberOfFunctionalMssqlJobs, phpVersion, composerTask, false));
+        stages.add(new Stage("Functionals mssql PHP7.4").jobs(jobs.toArray(new Job[0])));
+        return stages;
+    }
+
+
+
+    /**
+     * functional tests executed with DBMS MySQL with PHP 7.2
+     */
+    private ArrayList<Stage> getFunctionalMySqlStagesPHP72() {
+        ArrayList<Stage> stages = new ArrayList<>();
+        ArrayList<Job> jobs = new ArrayList<>();
+
+        // PHP 7.2, composer min, mysqli
+        String phpVersion = "PHP72";
+        Task composerJob = getComposerTaskByStageNumber(phpVersion, COMPOSER_MIN);
+        jobs.addAll(this.getJobsFunctionalTestsMysqlWithDriverMySqli(COMPOSER_MIN, numberOfFunctionalMysqlJobs, phpVersion, composerJob, false));
+
+        // PHP 7.2, composer default, pdo
+        composerJob = getComposerTaskByStageNumber(phpVersion, COMPOSER_DEFAULT);
+        jobs.addAll(this.getJobsFunctionalTestsMysqlWithDriverPdoMysql(COMPOSER_DEFAULT, numberOfFunctionalMysqlJobs, phpVersion, composerJob, false));
+
+        // PHP 7.2, composer max, pdo
+        composerJob = getComposerTaskByStageNumber(phpVersion, COMPOSER_MAX);
+        jobs.addAll(this.getJobsFunctionalTestsMysqlWithDriverPdoMysql(COMPOSER_MAX, numberOfFunctionalMysqlJobs, phpVersion, composerJob, false));
+
+        stages.add(new Stage("Functionals mysql PHP 7.2").jobs(jobs.toArray(new Job[0])));
+        return stages;
+    }
+
+    /**
+     * functional tests executed with DBMS MySQL with PHP 7.3
+     */
+    private ArrayList<Stage> getFunctionalMySqlStagesPHP73() {
+        ArrayList<Stage> stages = new ArrayList<>();
+        ArrayList<Job> jobs = new ArrayList<>();
+
+        // PHP 7.3, composer min, pdo
+        String phpVersion = "PHP73";
+        Task composerJob = getComposerTaskByStageNumber(phpVersion, COMPOSER_MIN);
+        jobs.addAll(this.getJobsFunctionalTestsMysqlWithDriverPdoMysql(COMPOSER_MIN, numberOfFunctionalMysqlJobs, phpVersion, composerJob, false));
+
+        // PHP 7.3, composer default, mysqli
+        composerJob = getComposerTaskByStageNumber(phpVersion, COMPOSER_DEFAULT);
+        jobs.addAll(this.getJobsFunctionalTestsMysqlWithDriverMySqli(COMPOSER_DEFAULT, numberOfFunctionalMysqlJobs, phpVersion, composerJob, false));
+
+        // PHP 7.3, composer max, mysqli
+        composerJob = getComposerTaskByStageNumber(phpVersion, COMPOSER_MAX);
+        jobs.addAll(this.getJobsFunctionalTestsMysqlWithDriverMySqli(COMPOSER_MAX, numberOfFunctionalMysqlJobs, phpVersion, composerJob, false));
+
+        stages.add(new Stage("Functionals mysql PHP 7.3").jobs(jobs.toArray(new Job[0])));
+        return stages;
+    }
+
+    /**
+     * functional tests executed with DBMS MySQL with PHP 7.4
+     */
+    private ArrayList<Stage> getFunctionalMySqlStagesPHP74() {
+        ArrayList<Stage> stages = new ArrayList<>();
+        ArrayList<Job> jobs = new ArrayList<>();
+
+        // PHP 7.4, composer min, pdo
+        String phpVersion = "PHP74";
+        Task composerJob = getComposerTaskByStageNumber(phpVersion, COMPOSER_MIN);
+        jobs.addAll(this.getJobsFunctionalTestsMysqlWithDriverPdoMysql(COMPOSER_MIN, numberOfFunctionalMysqlJobs, phpVersion, composerJob, false));
+
+        // PHP 7.4, composer default, mysqli
+        composerJob = getComposerTaskByStageNumber(phpVersion, COMPOSER_DEFAULT);
+        jobs.addAll(this.getJobsFunctionalTestsMysqlWithDriverMySqli(COMPOSER_DEFAULT, numberOfFunctionalMysqlJobs, phpVersion, composerJob, false));
+
+        // PHP 7.4, composer max, pdo
+        composerJob = getComposerTaskByStageNumber(phpVersion, COMPOSER_MAX);
+        jobs.addAll(this.getJobsFunctionalTestsMysqlWithDriverPdoMysql(COMPOSER_MAX, numberOfFunctionalMysqlJobs, phpVersion, composerJob, false));
+
+        stages.add(new Stage("Functionals mysql PHP 7.4").jobs(jobs.toArray(new Job[0])));
+        return stages;
+    }
+
+    /**
+     * all tests run via codeception framework on MySql
+     */
+    private ArrayList<Stage> getCodeceptionMySqlStages() {
+        ArrayList<Stage> stages = new ArrayList<>();
+
+        // install tests
+        String phpVersion = "PHP72";
+        ArrayList<Job> jobs = new ArrayList<>();
+        Task composerTask = getComposerTaskByStageNumber(phpVersion, COMPOSER_DEFAULT);
+        jobs.add(this.getJobAcceptanceTestInstallMysql(COMPOSER_DEFAULT, phpVersion, composerTask, false));
+        composerTask = getComposerTaskByStageNumber(phpVersion, COMPOSER_MAX);
+        jobs.add(this.getJobAcceptanceTestInstallMysql(COMPOSER_MAX, phpVersion, composerTask, false));
+        composerTask = getComposerTaskByStageNumber(phpVersion, COMPOSER_MIN);
+        jobs.add(this.getJobAcceptanceTestInstallMysql(COMPOSER_MIN, phpVersion, composerTask, false));
+
+
+        // PHP 7.2, composer min
+        phpVersion = "PHP72";
+        composerTask = getComposerTaskByStageNumber(phpVersion, COMPOSER_MIN);
+        jobs.addAll(this.getJobsAcceptanceTestsBackendMysql(COMPOSER_MIN, numberOfAcceptanceTestJobs, phpVersion, composerTask, false));
+
+        // PHP 7.3, composer max
+        phpVersion = "PHP73";
+        composerTask = getComposerTaskByStageNumber(phpVersion, COMPOSER_MAX);
+        jobs.addAll(this.getJobsAcceptanceTestsBackendMysql(COMPOSER_MAX, numberOfAcceptanceTestJobs, phpVersion, composerTask, false));
+
+        // PHP 7.4, composer default
+        phpVersion = "PHP74";
+        composerTask = getComposerTaskByStageNumber(phpVersion, COMPOSER_DEFAULT);
+        jobs.addAll(this.getJobsAcceptanceTestsBackendMysql(COMPOSER_DEFAULT, numberOfAcceptanceTestJobs, phpVersion, composerTask, false));
+
+        stages.add(new Stage("Acceptance mysql").jobs(jobs.toArray(new Job[0])));
+        return stages;
+    }
+
+    /**
+     * all tests run via codeception framework on SqLite
+     */
+    private ArrayList<Stage> getCodeceptionSqLiteStages() {
+        ArrayList<Stage> stages = new ArrayList<>();
+        ArrayList<Job> jobs = new ArrayList<>();
+
+        String phpVersion = "PHP72";
+        Task composerTask = getComposerTaskByStageNumber(phpVersion, COMPOSER_MAX);
+        jobs.add(this.getJobAcceptanceTestInstallSqlite(COMPOSER_MAX, phpVersion, composerTask, false));
+
+        phpVersion = "PHP73";
+        composerTask = getComposerTaskByStageNumber(phpVersion, COMPOSER_MIN);
+        jobs.add(this.getJobAcceptanceTestInstallSqlite(COMPOSER_MIN, phpVersion, composerTask, false));
+
+        phpVersion = "PHP74";
+        composerTask = getComposerTaskByStageNumber(phpVersion, COMPOSER_DEFAULT);
+        jobs.add(this.getJobAcceptanceTestInstallSqlite(COMPOSER_DEFAULT, phpVersion, composerTask, false));
+
+        stages.add(new Stage("Acceptance sqlite").jobs(jobs.toArray(new Job[0])));
+        return stages;
+    }
+
+    /**
+     * all tests run via codeception framework on PostGreSql
+     */
+    private ArrayList<Stage> getCodeceptionPgSqlStages() {
+        ArrayList<Stage> stages = new ArrayList<>();
+        ArrayList<Job> jobs = new ArrayList<>();
+
+        String phpVersion = "PHP72";
+        Task composerTask = getComposerTaskByStageNumber(phpVersion, COMPOSER_MIN);
+        jobs.add(this.getJobAcceptanceTestInstallPgsql(COMPOSER_MIN, phpVersion, composerTask, false));
+
+        phpVersion = "PHP73";
+        composerTask = getComposerTaskByStageNumber(phpVersion, COMPOSER_DEFAULT);
+        jobs.add(this.getJobAcceptanceTestInstallPgsql(COMPOSER_DEFAULT, phpVersion, composerTask, false));
+
+        phpVersion = "PHP74";
+        composerTask = getComposerTaskByStageNumber(phpVersion, COMPOSER_MAX);
+        jobs.add(this.getJobAcceptanceTestInstallPgsql(COMPOSER_MAX, phpVersion, composerTask, false));
+
+        stages.add(new Stage("Acceptance pgsql").jobs(jobs.toArray(new Job[0])));
+        return stages;
+    }
+
+    /**
+     * all unit tests, for all php versions and each with composer max and min install
+     */
+    private ArrayList<Stage> getUnitTestStages() {
+        ArrayList<Stage> stages = new ArrayList<>();
+        for (String phpVersion : phpVersions) {
+            ArrayList<Job> jobs = new ArrayList<>();
+            for (int stageNumber = 0; stageNumber <= 2; stageNumber++) {
+                Task composerTask = getComposerTaskByStageNumber(phpVersion, stageNumber);
+                jobs.addAll(this.getJobUnitPhpRandom(stageNumber, numberOfUnitRandomOrderJobs, phpVersion, composerTask, false));
+                jobs.add(this.getJobUnitDeprecatedPhp(stageNumber, phpVersion, composerTask, false));
+                jobs.add(this.getJobUnitPhp(stageNumber, phpVersion, composerTask, false));
+            }
+            stages.add(new Stage("Unit Tests " + phpVersion).jobs(jobs.toArray(new Job[0])));
+        }
+        return stages;
+    }
+
+    /**
+     * integrity stage - various checks for code quality
+     * <p>
+     * this stage is independent of actual composer or php versions
+     */
+    private Stage getIntegrityStage() {
+        String phpVersionForIntegrityStage = phpVersions[0]; // the version is not very important, just use one (except for linting!)
+        ArrayList<Job> jobs = new ArrayList<>();
+        jobs.add(this.getJobIntegrationAnnotations(phpVersionForIntegrityStage, this.getTaskComposerInstall(phpVersionForIntegrityStage), false));
+        jobs.add(this.getJobCglCheckFullCore(phpVersionForIntegrityStage, this.getTaskComposerInstall(phpVersionForIntegrityStage), false));
+        jobs.add(this.getJobIntegrationVarious(phpVersionForIntegrityStage, this.getTaskComposerInstall(phpVersionForIntegrityStage), false));
+        jobs.add(this.getJobLintScssTs(phpVersionForIntegrityStage, false));
+        jobs.add(this.getJobUnitJavaScript(phpVersionForIntegrityStage, this.getTaskComposerInstall(phpVersionForIntegrityStage), false));
+        jobs.add(this.getJobComposerValidate(phpVersionForIntegrityStage, false));
+
+        for (String phpVersion : phpVersions) {
+            jobs.add(this.getJobLintPhp(phpVersion, false));
+        }
+        return new Stage("Integrity").jobs(jobs.toArray(new Job[0]));
+    }
+
+    /**
+     * preparation stage - this will only define labels for later communication of test results
+     */
+    private Stage getPreparationStage() {
+        ArrayList<Job> jobs = new ArrayList<>();
+        jobs.add(this.getJobBuildLabels());
+        return new Stage("Preparation").jobs(jobs.toArray(new Job[0]));
     }
 }

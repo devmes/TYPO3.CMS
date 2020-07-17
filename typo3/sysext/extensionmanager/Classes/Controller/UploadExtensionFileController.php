@@ -17,6 +17,7 @@ namespace TYPO3\CMS\Extensionmanager\Controller;
 use TYPO3\CMS\Core\Configuration\ExtensionConfiguration;
 use TYPO3\CMS\Core\Core\Environment;
 use TYPO3\CMS\Core\Messaging\FlashMessage;
+use TYPO3\CMS\Core\Security\BlockSerializationTrait;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Extensionmanager\Exception\DependencyConfigurationNotFoundException;
 use TYPO3\CMS\Extensionmanager\Exception\ExtensionManagerException;
@@ -28,6 +29,8 @@ use TYPO3\CMS\Extensionmanager\Exception\ExtensionManagerException;
  */
 class UploadExtensionFileController extends AbstractController
 {
+    use BlockSerializationTrait;
+
     /**
      * @var \TYPO3\CMS\Extensionmanager\Domain\Repository\ExtensionRepository
      */
@@ -139,7 +142,7 @@ class UploadExtensionFileController extends AbstractController
                 );
             }
             $extensionData = $this->extractExtensionFromFile($tempFile, $fileName, $overwrite);
-            $isAutomaticInstallationEnabled = (bool)GeneralUtility::makeInstance(ExtensionConfiguration::class)->get('extensionmanager', 'offlineMode');
+            $isAutomaticInstallationEnabled = (bool)GeneralUtility::makeInstance(ExtensionConfiguration::class)->get('extensionmanager', 'automaticInstallation');
             if (!$isAutomaticInstallationEnabled) {
                 $this->addFlashMessage(
                     $this->translate('extensionList.uploadFlashMessage.message', [$extensionData['extKey']]),

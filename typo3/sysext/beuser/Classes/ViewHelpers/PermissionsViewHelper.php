@@ -22,7 +22,7 @@ use TYPO3Fluid\Fluid\Core\ViewHelper\Traits\CompileWithRenderStatic;
 /**
  * Render permission icon group (user / group / others) of the "Access" module.
  *
- * Most of that could be done in fluid directly, but this view helper
+ * Most of that could be done in fluid directly, but this ViewHelper
  * is much better performance wise.
  * @internal
  */
@@ -59,7 +59,7 @@ class PermissionsViewHelper extends AbstractViewHelper
      * @param \Closure $renderChildrenClosure
      * @param RenderingContextInterface $renderingContext
      * @return string
-     * @throws \TYPO3\CMS\Fluid\Core\ViewHelper\Exception
+     * @throws \TYPO3Fluid\Fluid\Core\ViewHelper\Exception
      */
     public static function renderStatic(array $arguments, \Closure $renderChildrenClosure, RenderingContextInterface $renderingContext)
     {

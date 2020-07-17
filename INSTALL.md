@@ -2,19 +2,19 @@ INSTALLING TYPO3
 ================
 
 TYPO3 is an open source PHP based web content management system released
-under the GNU GPL. TYPO3 is copyright © 1999-2019 by Kasper Skaarhoj.
+under the GNU GPL. TYPO3 is copyright © 1999-2020 by Kasper Skaarhoj.
 
 Official Installation and Upgrade Guide
 ---------------------------------------
 
 You can find instructions regarding installation and upgrade at
-https://docs.typo3.org/typo3cms/InstallationGuide/
+https://docs.typo3.org/installation
 
 
 Server system requirements
 --------------------------
 
-Find the official system requirements at [get.typo3.org](https://get.typo3.org/version/9#system-requirements).
+Find the official system requirements in TYPO3's [documentation](https://docs.typo3.org/system-requirements).
 
 TYPO3 Security
 --------------

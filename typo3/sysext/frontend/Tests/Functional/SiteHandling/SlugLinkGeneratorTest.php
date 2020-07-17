@@ -582,25 +582,92 @@ class SlugLinkGeneratorTest extends AbstractTestCase
     /**
      * @return array
      */
-    public function linkIsGeneratedForPageVersionDataProvider(): array
+    public function linkIsGeneratedForRestrictedPageForGuestsUsingTypolinkLinkAccessRestrictedPagesDataProvider(): array
     {
-        // -> most probably since pid=-1 is not correctly resolved
         $instructions = [
-            // acme.com -> acme.com (same site)
-            ['https://acme.us/', 1100, 1100, false, '/welcome'],
-            ['https://acme.us/', 1100, 1100, true, '/index.php?id=acme-first'], // @todo Alias not removed, yet
-            // ['https://acme.us/', 1100, 1950, false, '/?id=1950'], // @todo Not generated for new-placeholder
-            ['https://acme.us/', 1100, 1950, true, '/index.php?id={targetPageId}'],
-            // blog.acme.com -> acme.com (different site)
-            ['https://blog.acme.com/', 2100, 1100, false, 'https://acme.us/welcome'],
-            ['https://blog.acme.com/', 2100, 1100, true, '/index.php?id=acme-first'], // @todo Alias not removed, yet, domain missing
-            // ['https://blog.acme.com/', 2100, 1950, false, '/?id=1950'], // @todo Not generated for new-placeholder
-            ['https://blog.acme.com/', 2100, 1950, true, '/index.php?id={targetPageId}'], // @todo Domain missing
+            // default language (0)
+            ['https://acme.us/', 1100, 1510, 0, '/my-acme/whitepapers'],
+            ['https://acme.us/', 1100, 1512, 0, '/my-acme/whitepapers/solutions'],
+            ['https://acme.us/', 1100, 1515, 0, '/my-acme/whitepapers/research'],
+            // french language (1)
+            ['https://acme.fr/', 1100, 1510, 1, '/my-acme/papiersblanc'],
+            ['https://acme.fr/', 1100, 1512, 1, '/my-acme/papiersblanc/la-solutions'],
+            ['https://acme.fr/', 1100, 1515, 1, '/my-acme/papiersblanc/recherche'],
+            // canadian french language (2)
+            ['https://acme.ca/', 1100, 1510, 2, '/my-acme-ca/papiersblanc'],
+            ['https://acme.ca/', 1100, 1512, 2, '/my-acme-ca/papiersblanc/la-solutions'],
+            ['https://acme.ca/', 1100, 1515, 2, '/my-acme-ca/papiersblanc/recherche'],
         ];
 
         return $this->keysFromTemplate(
             $instructions,
-            '%2$d->%3$d (resolve:%4$d)'
+            '%2$d->%3$d (language: %4$d)'
+        );
+    }
+
+    /**
+     * @param string $hostPrefix
+     * @param int $sourcePageId
+     * @param int $targetPageId
+     * @param int $languageId
+     * @param string $expectation
+     *
+     * @test
+     * @dataProvider linkIsGeneratedForRestrictedPageForGuestsUsingTypolinkLinkAccessRestrictedPagesDataProvider
+     */
+    public function linkIsGeneratedForRestrictedPageForGuestsUsingTypolinkLinkAccessRestrictedPages(string $hostPrefix, int $sourcePageId, int $targetPageId, int $languageId, string $expectation)
+    {
+        $response = $this->executeFrontendRequest(
+            (new InternalRequest($hostPrefix))
+                ->withPageId($sourcePageId)
+                ->withInstructions([
+                    (new TypoScriptInstruction(TemplateService::class))
+                        ->withTypoScript([
+                            'config.' => [
+                                'typolinkLinkAccessRestrictedPages' => 'NONE',
+                            ],
+                        ]),
+                    $this->createTypoLinkUrlInstruction([
+                        'parameter' => $targetPageId,
+                    ])
+                ]),
+            $this->internalRequestContext
+        );
+
+        self::assertSame($expectation, (string)$response->getBody());
+    }
+
+    /**
+     * @return array
+     */
+    public function linkIsGeneratedForPageVersionDataProvider(): array
+    {
+        $instructions = [
+            // acme.com -> acme.com (same site): link to changed page
+            ['https://acme.us/', 1100, 1100, false, 1, '/welcome-modified'],
+            ['https://acme.us/', 1100, 1100, true, 1, '/welcome-modified'],
+            ['https://acme.us/', 1100, 1100, false, 0, '/welcome'],
+            ['https://acme.us/', 1100, 1100, true, 0, '/index.php?id=acme-first'], // @todo this is wrong, link should be empty
+            // acme.com -> acme.com (same site): link to new page
+            ['https://acme.us/', 1100, 1950, false, 1, '/bye'],
+            ['https://acme.us/', 1100, 1950, true, 1, '/bye'],
+            ['https://acme.us/', 1100, 1950, false, 0, ''],
+            ['https://acme.us/', 1100, 1950, true, 0, '/index.php?id={targetPageId}'], // @todo this is wrong, link should be empty
+            // blog.acme.com -> acme.com (different site): link to changed page
+            ['https://blog.acme.com/', 2100, 1100, true, 1, 'https://acme.us/welcome-modified'],
+            ['https://blog.acme.com/', 2100, 1100, false, 1, 'https://acme.us/welcome-modified'],
+            ['https://blog.acme.com/', 2100, 1100, false, 0, 'https://acme.us/welcome'],
+            ['https://blog.acme.com/', 2100, 1100, true, 0, '/index.php?id=acme-first'], // @todo this is wrong, link should be empty
+            // blog.acme.com -> acme.com (different site): link to new page
+            ['https://blog.acme.com/', 2100, 1950, false, 1, 'https://acme.us/bye'],
+            ['https://blog.acme.com/', 2100, 1950, true, 1, 'https://acme.us/bye'],
+            ['https://blog.acme.com/', 2100, 1950, false, 0, ''],
+            ['https://blog.acme.com/', 2100, 1950, true, 0, '/index.php?id={targetPageId}'], // @todo this is wrong, link should be empty
+        ];
+
+        return $this->keysFromTemplate(
+            $instructions,
+            '%2$d->%3$d (resolve:%4$d, be_user:%5$d)'
         );
     }
 
@@ -609,12 +676,13 @@ class SlugLinkGeneratorTest extends AbstractTestCase
      * @param int $sourcePageId
      * @param int $targetPageId
      * @param bool $resolveVersion
+     * @param int $backendUserId
      * @param string $expectation
      *
      * @test
      * @dataProvider linkIsGeneratedForPageVersionDataProvider
      */
-    public function linkIsGeneratedForPageVersion(string $hostPrefix, int $sourcePageId, int $targetPageId, bool $resolveVersion, string $expectation)
+    public function linkIsGeneratedForPageVersion(string $hostPrefix, int $sourcePageId, int $targetPageId, bool $resolveVersion, int $backendUserId, string $expectation)
     {
         $workspaceId = 1;
         if ($resolveVersion) {
@@ -635,7 +703,8 @@ class SlugLinkGeneratorTest extends AbstractTestCase
                     ])
                 ]),
             $this->internalRequestContext
-                ->withWorkspaceId($workspaceId)
+                ->withWorkspaceId($backendUserId !== 0 ? $workspaceId : 0)
+                ->withBackendUserId($backendUserId)
         );
 
         $expectation = str_replace(
@@ -695,15 +764,15 @@ class SlugLinkGeneratorTest extends AbstractTestCase
                         'children' => [
                             [
                                 'title' => 'Markets',
-                                'link' => '/index.php?id=7110&MP=7100-1700',
+                                'link' => '/news/common/markets',
                             ],
                             [
                                 'title' => 'Products',
-                                'link' => '/index.php?id=7120&MP=7100-1700',
+                                'link' => '/news/common/products',
                             ],
                             [
                                 'title' => 'Partners',
-                                'link' => '/index.php?id=7130&MP=7100-1700',
+                                'link' => '/news/common/partners',
                             ],
                         ],
                     ],
@@ -736,15 +805,15 @@ class SlugLinkGeneratorTest extends AbstractTestCase
                             'children' => [
                                 [
                                     'title' => 'Markets',
-                                    'link' => '/index.php?id=7110&MP=7100-2700',
+                                    'link' => '/news/common/markets',
                                 ],
                                 [
                                     'title' => 'Products',
-                                    'link' => '/index.php?id=7120&MP=7100-2700',
+                                    'link' => '/news/common/products',
                                 ],
                                 [
                                     'title' => 'Partners',
-                                    'link' => '/index.php?id=7130&MP=7100-2700',
+                                    'link' => '/news/common/partners',
                                 ],
                             ],
                         ],

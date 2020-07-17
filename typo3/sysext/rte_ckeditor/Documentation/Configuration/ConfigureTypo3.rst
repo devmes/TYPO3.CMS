@@ -1,5 +1,5 @@
 .. include:: ../Includes.txt
-
+.. highlight:: typoscript
 
 .. _config-typo3:
 
@@ -23,22 +23,20 @@ Page TSconfig
 Relevant Settings for `rte_ckeditor`
 ------------------------------------
 
-Page TSconfig can be used to change
+Page TSconfig can be used to change:
 
-* the preset used in general
-* or the preset used by specific database table fields.
-* or the preset used by specific database table fields for a specific table type (see :ref:`t3tca:types`).
+#.  Default preset::
 
-.. code-block:: typoscript
+      RTE.default.preset = full
 
-   # Default preset
-   RTE.default.preset = full
+#. Override for one field (:ts:`RTE.config.[tableName].[fieldName].preset`)::
 
-   # RTE.config.table.column.preset = presetIdentifier
-   RTE.config.tx_news_domain_model_news.preset = minimal
+      RTE.config.tt_content.bodytext.preset = myCustomPreset
+      RTE.config.tx_news_domain_model_news.bodytext.preset = minimal
 
-   # RTE.config.table.column.types.name.preset = presetIdentifier
-   RTE.config.tt_content.types.textpic.preset = default
+#. Override for one field, if type matches (:ts:`RTE.config.[tableName].[fieldName].types.[type].preset`)::
+
+      RTE.config.tt_content.bodytext.types.textmedia.preset = minimal
 
 For more examples, see :ref:`t3tsconfig:pageTsRte` in "TSconfig Reference".
 
@@ -60,7 +58,7 @@ editing a page.
 #. Enter the Page TSconfig in the field :guilabel:`"Page TSconfig"`
 
 
-Additionally, you can add Page TSconfig in an extension: :file:`Configuration/TSconfig`, see
+Additionally, you can add Page TSconfig in an extension: :file:`Configuration/TSconfig/Page`, see
 :ref:`best-practice-sitepackage`.
 
 How to view settings

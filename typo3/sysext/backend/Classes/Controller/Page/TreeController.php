@@ -21,7 +21,9 @@ use TYPO3\CMS\Backend\Configuration\BackendUserConfiguration;
 use TYPO3\CMS\Backend\Tree\Repository\PageTreeRepository;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Authentication\BackendUserAuthentication;
+use TYPO3\CMS\Core\Context\Context;
 use TYPO3\CMS\Core\Database\Query\Restriction\DocumentTypeExclusionRestriction;
+use TYPO3\CMS\Core\Database\Query\Restriction\PagePermissionRestriction;
 use TYPO3\CMS\Core\Exception\Page\RootLineException;
 use TYPO3\CMS\Core\Exception\SiteNotFoundException;
 use TYPO3\CMS\Core\Http\JsonResponse;
@@ -117,6 +119,7 @@ class TreeController
     {
         $configuration = [
             'allowRecursiveDelete' => !empty($this->getBackendUser()->uc['recursiveDelete']),
+            'allowDragMove' => $this->isDragMoveAllowed(),
             'doktypes' => $this->getDokTypes(),
             'displayDeleteConfirmation' => $this->getBackendUser()->jsConfirmation(JsConfirmation::DELETE),
             'temporaryMountPoint' => $this->getMountPointPath((int)($this->getBackendUser()->uc['pageTree_temporaryMountPoint'] ?? 0)),
@@ -239,8 +242,12 @@ class TreeController
      */
     protected function pagesToFlatArray(array $page, int $entryPoint, int $depth = 0, array $inheritedData = []): array
     {
+        $backendUser = $this->getBackendUser();
         $pageId = (int)$page['uid'];
         if (in_array($pageId, $this->hiddenRecords, true)) {
+            return [];
+        }
+        if ($pageId === 0 && !$backendUser->isAdmin()) {
             return [];
         }
 
@@ -267,7 +274,6 @@ class TreeController
         if (trim($visibleText) === '') {
             $visibleText = htmlspecialchars('[' . $this->getLanguageService()->sL('LLL:EXT:core/Resources/Private/Language/locallang_core.xlf:labels.no_title') . ']');
         }
-        $visibleText = GeneralUtility::fixed_lgd_cs($visibleText, (int)$this->getBackendUser()->uc['titleLen'] ?: 40);
 
         if ($this->addDomainName && $page['is_siteroot']) {
             $domain = $this->getDomainNameForPage($pageId);
@@ -283,32 +289,63 @@ class TreeController
         }
 
         $items = [];
-        $items[] = [
+        $item = [
             // Used to track if the tree item is collapsed or not
             'stateIdentifier' => $identifier,
             'identifier' => $pageId,
             'depth' => $depth,
             'tip' => htmlspecialchars($tooltip),
-            'hasChildren' => !empty($page['_children']),
             'icon' => $icon->getIdentifier(),
             'name' => $visibleText,
             'nameSourceField' => $nameSourceField,
             'alias' => htmlspecialchars($page['alias'] ?? ''),
-            'prefix' => htmlspecialchars($prefix),
-            'suffix' => htmlspecialchars($suffix),
-            'locked' => is_array($lockInfo),
-            'overlayIcon' => $icon->getOverlayIcon() ? $icon->getOverlayIcon()->getIdentifier() : '',
             'selectable' => true,
-            'expanded' => (bool)$expanded,
             'checked' => false,
-            'backgroundColor' => htmlspecialchars($backgroundColor),
-            'stopPageTree' => $stopPageTree,
-            'class' => $this->resolvePageCssClassNames($page),
-            'readableRootline' => $depth === 0 && $this->showMountPathAboveMounts ? $this->getMountPointPath($pageId) : '',
-            'isMountPoint' => $depth === 0,
             'mountPoint' => $entryPoint,
             'workspaceId' => !empty($page['t3ver_oid']) ? $page['t3ver_oid'] : $pageId,
+            'allowDelete' => $backendUser->doesUserHaveAccess($page, Permission::PAGE_DELETE),
+            'allowEdit' => $backendUser->doesUserHaveAccess($page, Permission::PAGE_EDIT)
+                && $backendUser->check('tables_modify', 'pages')
+                && $backendUser->checkLanguageAccess(0)
         ];
+
+        if (!empty($page['_children'])) {
+            $item['hasChildren'] = true;
+        }
+        if (!empty($prefix)) {
+            $item['prefix'] = htmlspecialchars($prefix);
+        }
+        if (!empty($suffix)) {
+            $item['suffix'] = htmlspecialchars($suffix);
+        }
+        if (is_array($lockInfo)) {
+            $item['locked'] = true;
+        }
+        if ($icon->getOverlayIcon()) {
+            $item['overlayIcon'] = $icon->getOverlayIcon()->getIdentifier();
+        }
+        if ($expanded) {
+            $item['expanded'] = $expanded;
+        }
+        if ($backgroundColor) {
+            $item['backgroundColor'] = htmlspecialchars($backgroundColor);
+        }
+        if ($stopPageTree) {
+            $item['stopPageTree'] = $stopPageTree;
+        }
+        $class = $this->resolvePageCssClassNames($page);
+        if (!empty($class)) {
+            $item['class'] = $class;
+        }
+        if ($depth === 0) {
+            $item['isMountPoint'] = true;
+
+            if ($this->showMountPathAboveMounts) {
+                $item['readableRootline'] = $this->getMountPointPath($pageId);
+            }
+        }
+
+        $items[] = $item;
         if (!$stopPageTree) {
             foreach ($page['_children'] as $child) {
                 $items = array_merge($items, $this->pagesToFlatArray($child, $entryPoint, $depth + 1, ['backgroundColor' => $backgroundColor]));
@@ -325,18 +362,21 @@ class TreeController
     protected function getAllEntryPointPageTrees(): array
     {
         $backendUser = $this->getBackendUser();
-
-        $userTsConfig = $this->getBackendUser()->getTSConfig();
+        $userTsConfig = $backendUser->getTSConfig();
         $excludedDocumentTypes = GeneralUtility::intExplode(',', $userTsConfig['options.']['pageTree.']['excludeDoktypes'] ?? '', true);
 
-        $additionalPageTreeQueryRestrictions = [];
+        $additionalQueryRestrictions = [];
         if (!empty($excludedDocumentTypes)) {
-            foreach ($excludedDocumentTypes as $excludedDocumentType) {
-                $additionalPageTreeQueryRestrictions[] = new DocumentTypeExclusionRestriction((int)$excludedDocumentType);
-            }
+            $additionalQueryRestrictions[] = GeneralUtility::makeInstance(DocumentTypeExclusionRestriction::class, $excludedDocumentTypes);
         }
+        $additionalQueryRestrictions[] = GeneralUtility::makeInstance(PagePermissionRestriction::class, GeneralUtility::makeInstance(Context::class)->getAspect('backend.user'), Permission::PAGE_SHOW);
 
-        $repository = GeneralUtility::makeInstance(PageTreeRepository::class, (int)$backendUser->workspace, [], $additionalPageTreeQueryRestrictions);
+        $repository = GeneralUtility::makeInstance(
+            PageTreeRepository::class,
+            (int)$backendUser->workspace,
+            [],
+            $additionalQueryRestrictions
+        );
 
         $entryPoints = (int)($backendUser->uc['pageTree_temporaryMountPoint'] ?? 0);
         if ($entryPoints > 0) {
@@ -375,10 +415,7 @@ class TreeController
                 }
             }
 
-            $entryPoint = $repository->getTree($entryPoint, function ($page) use ($backendUser) {
-                // check each page if the user has permission to access it
-                return $backendUser->doesUserHaveAccess($page, Permission::PAGE_SHOW);
-            });
+            $entryPoint = $repository->getTree($entryPoint, null, $entryPoints);
             if (!is_array($entryPoint)) {
                 unset($entryPoints[$k]);
             }
@@ -468,6 +505,18 @@ class TreeController
         }
 
         return implode(' ', $classes);
+    }
+
+    /**
+     * Check if drag-move in the svg tree is allowed for the user
+     *
+     * @return bool
+     */
+    protected function isDragMoveAllowed(): bool
+    {
+        $backendUser = $this->getBackendUser();
+        return $backendUser->isAdmin()
+            || ($backendUser->check('tables_modify', 'pages') && $backendUser->checkLanguageAccess(0));
     }
 
     /**

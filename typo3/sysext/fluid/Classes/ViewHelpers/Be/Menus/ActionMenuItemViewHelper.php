@@ -14,15 +14,18 @@ namespace TYPO3\CMS\Fluid\ViewHelpers\Be\Menus;
  * The TYPO3 project - inspiring people to share!
  */
 
+use TYPO3\CMS\Core\Utility\ArrayUtility;
 use TYPO3Fluid\Fluid\Core\ViewHelper\AbstractTagBasedViewHelper;
 
 /**
- * View helper which returns an option tag.
- * This view helper only works in conjunction with \TYPO3\CMS\Fluid\ViewHelpers\Be\Menus\ActionMenuViewHelper
- * Note: This view helper is experimental!
+ * ViewHelper which returns an option tag.
+ * This ViewHelper only works in conjunction with :php:`\TYPO3\CMS\Fluid\ViewHelpers\Be\Menus\ActionMenuViewHelper`.
+ *
+ * .. note::
+ *    This ViewHelper is experimental!
  *
  * Examples
- * --------
+ * ========
  *
  * Simple::
  *
@@ -32,7 +35,7 @@ use TYPO3Fluid\Fluid\Core\ViewHelper\AbstractTagBasedViewHelper;
  *       <f:be.menus.actionMenuItem label="List Posts" controller="Post" action="index" arguments="{blog: blog}" />
  *    </f:be.menus.actionMenu>
  *
- * Selectbox with the options "Overview", "Create new Blog" and "List Posts"
+ * Selectbox with the options "Overview", "Create new Blog" and "List Posts".
  *
  * Localized::
  *
@@ -41,7 +44,7 @@ use TYPO3Fluid\Fluid\Core\ViewHelper\AbstractTagBasedViewHelper;
  *       <f:be.menus.actionMenuItem label="{f:translate(key='create_blog')}" controller="Blog" action="new" />
  *    </f:be.menus.actionMenu>
  *
- * localized selectbox
+ * Localized selectbox.
  */
 class ActionMenuItemViewHelper extends AbstractTagBasedViewHelper
 {
@@ -77,16 +80,34 @@ class ActionMenuItemViewHelper extends AbstractTagBasedViewHelper
         $action = $this->arguments['action'];
         $arguments = $this->arguments['arguments'];
 
-        $uriBuilder = $this->renderingContext->getControllerContext()->getUriBuilder();
-        $uri = $uriBuilder->reset()->uriFor($action, $arguments, $controller);
+        $uri = $this->renderingContext->getControllerContext()->getUriBuilder()->reset()->uriFor($action, $arguments, $controller);
         $this->tag->addAttribute('value', $uri);
-        $currentRequest = $this->renderingContext->getControllerContext()->getRequest();
-        $currentController = $currentRequest->getControllerName();
-        $currentAction = $currentRequest->getControllerActionName();
-        if ($action === $currentAction && $controller === $currentController) {
-            $this->tag->addAttribute('selected', 'selected');
+
+        if (!$this->tag->hasAttribute('selected')) {
+            $this->evaluateSelectItemState($controller, $action, $arguments);
         }
+
         $this->tag->setContent($label);
         return $this->tag->render();
+    }
+
+    protected function evaluateSelectItemState(string $controller, string $action, array $arguments): void
+    {
+        $currentRequest = $this->renderingContext->getControllerContext()->getRequest();
+        $flatRequestArguments = ArrayUtility::flatten(
+            array_merge([
+                'controller' => $currentRequest->getControllerName(),
+                'action' => $currentRequest->getControllerActionName()
+            ], $currentRequest->getArguments())
+        );
+        $flatViewHelperArguments = ArrayUtility::flatten(
+            array_merge(['controller' => $controller, 'action' => $action], $arguments)
+        );
+        if (
+            $this->arguments['selected'] ||
+            array_diff($flatRequestArguments, $flatViewHelperArguments) === []
+        ) {
+            $this->tag->addAttribute('selected', 'selected');
+        }
     }
 }

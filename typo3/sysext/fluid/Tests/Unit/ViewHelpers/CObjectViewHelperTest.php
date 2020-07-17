@@ -145,7 +145,7 @@ class CObjectViewHelperTest extends ViewHelperBaseTestcase
             ]
         );
 
-        $this->expectException(\TYPO3\CMS\Fluid\Core\ViewHelper\Exception::class);
+        $this->expectException(\TYPO3Fluid\Fluid\Core\ViewHelper\Exception::class);
         $this->expectExceptionCode($exceptionCode);
         $this->viewHelper->initializeArgumentsAndRender();
     }
@@ -217,7 +217,7 @@ class CObjectViewHelperTest extends ViewHelperBaseTestcase
 
         $this->contentObjectRenderer->start(['foo'], 'table')->willReturn();
         $this->contentObjectRenderer->setCurrentVal('foo')->willReturn();
-        $this->contentObjectRenderer->cObjGetSingle('TEXT', $subConfigArray)->willReturn('Hello World');
+        $this->contentObjectRenderer->cObjGetSingle('TEXT', $subConfigArray, Argument::any())->willReturn('Hello World');
 
         $objectManager = $this->prophesize(ObjectManager::class);
         $objectManager->get(ConfigurationManagerInterface::class)->willReturn($this->configurationManager->reveal());

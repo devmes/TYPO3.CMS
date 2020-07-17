@@ -202,6 +202,11 @@ class SearchController extends \TYPO3\CMS\Extbase\Mvc\Controller\ActionControlle
         if (is_array($this->settings['defaultOptions'])) {
             $searchData = array_merge($this->settings['defaultOptions'], $searchData);
         }
+        // if "languageUid" was set to "current", take the current site language
+        if (($searchData['languageUid'] ?? '') === 'current') {
+            $searchData['languageUid'] = GeneralUtility::makeInstance(Context::class)->getPropertyFromAspect('language', 'id', 0);
+        }
+
         // Indexer configuration from Extension Manager interface:
         $this->indexerConfig = GeneralUtility::makeInstance(ExtensionConfiguration::class)->get('indexed_search');
         $this->enableMetaphoneSearch = (bool)$this->indexerConfig['enableMetaphoneSearch'];
@@ -487,7 +492,7 @@ class SearchController extends \TYPO3\CMS\Extbase\Mvc\Controller\ActionControlle
                 $copiedRow = $row;
                 unset($copiedRow['cHashParams']);
                 $title = $this->linkPageATagWrap(
-                    htmlspecialchars($title),
+                    $title,
                     $this->linkPage($row['page_id'], $copiedRow)
                 );
             }
@@ -504,7 +509,7 @@ class SearchController extends \TYPO3\CMS\Extbase\Mvc\Controller\ActionControlle
                 }
             }
             $title = $this->linkPageATagWrap(
-                htmlspecialchars($title),
+                $title,
                 $this->linkPage($row['data_page_id'], $row, $markUpSwParams)
             );
         }
@@ -1101,23 +1106,23 @@ class SearchController extends \TYPO3\CMS\Extbase\Mvc\Controller\ActionControlle
     protected function getAllAvailableLanguageOptions()
     {
         $allOptions = [
-            '-1' => LocalizationUtility::translate('languageUids.-1', 'IndexedSearch'),
-            '0' => LocalizationUtility::translate('languageUids.0', 'IndexedSearch')
+            '-1' => LocalizationUtility::translate('languageUids.-1', 'IndexedSearch')
         ];
         $blindSettings = $this->settings['blind'];
         if (!$blindSettings['languageUid']) {
-            // Add search languages
-            $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)
-                ->getQueryBuilderForTable('sys_language');
-            $queryBuilder->setRestrictions(GeneralUtility::makeInstance(FrontendRestrictionContainer::class));
-            $result = $queryBuilder
-                ->select('uid', 'title')
-                ->from('sys_language')
-                ->execute();
+            try {
+                $site = GeneralUtility::makeInstance(SiteFinder::class)
+                    ->getSiteByPageId($GLOBALS['TSFE']->id);
 
-            while ($lang = $result->fetch()) {
-                $allOptions[$lang['uid']] = $lang['title'];
+                $languages = $site->getLanguages();
+                foreach ($languages as $language) {
+                    $allOptions[$language->getLanguageId()] = $language->getNavigationTitle() ?? $language->getTitle();
+                }
+            } catch (SiteNotFoundException $e) {
+                // No Site or pseudo site found, no options
+                $allOptions = [];
             }
+
             // disable single entries by TypoScript
             $allOptions = $this->removeOptionsFromOptionList($allOptions, $blindSettings['languageUid']);
         } else {
@@ -1636,11 +1641,17 @@ class SearchController extends \TYPO3\CMS\Extbase\Mvc\Controller\ActionControlle
      */
     protected function linkPageATagWrap(string $linkText, array $linkData): string
     {
-        $target = !empty($linkData['target']) ? 'target="' . htmlspecialchars($linkData['target']) . '"' : '';
-
-        return '<a href="' . htmlspecialchars($linkData['uri']) . '" ' . $target . '>'
-            . htmlspecialchars($linkText)
-            . '</a>';
+        $attributes = [
+            'href' => $linkData['uri']
+        ];
+        if (!empty($linkData['target'])) {
+            $attributes['target'] = $linkData['target'];
+        }
+        return sprintf(
+            '<a %s>%s</a>',
+            GeneralUtility::implodeAttributes($attributes, true),
+            htmlspecialchars($linkText, ENT_QUOTES | ENT_HTML5)
+        );
     }
 
     /**

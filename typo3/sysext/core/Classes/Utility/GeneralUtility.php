@@ -66,21 +66,21 @@ class GeneralUtility
      * Singleton instances returned by makeInstance, using the class names as
      * array keys
      *
-     * @var array<\TYPO3\CMS\Core\SingletonInterface>
+     * @var array<string, SingletonInterface>
      */
     protected static $singletonInstances = [];
 
     /**
      * Instances returned by makeInstance, using the class names as array keys
      *
-     * @var array<array><object>
+     * @var array<string, array<object>>
      */
     protected static $nonSingletonInstances = [];
 
     /**
      * Cache for makeInstance with given class name and final class names to reduce number of self::getClassName() calls
      *
-     * @var array Given class name => final class name
+     * @var array<string, class-string> Given class name => final class name
      */
     protected static $finalClassNameCache = [];
 
@@ -99,13 +99,6 @@ class GeneralUtility
     protected static $idnaStringCache = [];
 
     /**
-     * IDNA converter
-     *
-     * @var \Mso\IdnaConvert\IdnaConvert
-     */
-    protected static $idnaConverter;
-
-    /**
      * A list of supported CGI server APIs
      * NOTICE: This is a duplicate of the SAME array in SystemEnvironmentBuilder
      * @var array
@@ -119,7 +112,7 @@ class GeneralUtility
     ];
 
     /**
-     * @var array
+     * @var array<string, mixed>
      */
     protected static $indpEnvCache = [];
 
@@ -138,12 +131,11 @@ class GeneralUtility
      *
      *************************/
     /**
-     * Returns the 'GLOBAL' value of incoming data from POST or GET, with priority to POST (that is equalent to 'GP' order)
-     * To enhance security in your scripts, please consider using GeneralUtility::_GET or GeneralUtility::_POST if you already
-     * know by which method your data is arriving to the scripts!
+     * Returns the 'GLOBAL' value of incoming data from POST or GET, with priority to POST, which is equalent to 'GP' order
+     * In case you already know by which method your data is arriving consider using GeneralUtility::_GET or GeneralUtility::_POST.
      *
      * @param string $var GET/POST var to return
-     * @return mixed POST var named $var and if not set, the GET var of the same name.
+     * @return mixed POST var named $var, if not set, the GET var of the same name and if also not set, NULL.
      */
     public static function _GP($var)
     {
@@ -181,11 +173,10 @@ class GeneralUtility
 
     /**
      * Returns the global $_GET array (or value from) normalized to contain un-escaped values.
-     * ALWAYS use this API function to acquire the GET variables!
      * This function was previously used to normalize between magic quotes logic, which was removed from PHP 5.5
      *
      * @param string $var Optional pointer to value in GET array (basically name of GET var)
-     * @return mixed If $var is set it returns the value of $_GET[$var]. If $var is NULL (default), returns $_GET itself. In any case *slashes are stipped from the output!*
+     * @return mixed If $var is set it returns the value of $_GET[$var]. If $var is NULL (default), returns $_GET itself.
      * @see _POST(), _GP()
      */
     public static function _GET($var = null)
@@ -202,10 +193,9 @@ class GeneralUtility
 
     /**
      * Returns the global $_POST array (or value from) normalized to contain un-escaped values.
-     * ALWAYS use this API function to acquire the $_POST variables!
      *
      * @param string $var Optional pointer to value in POST array (basically name of POST var)
-     * @return mixed If $var is set it returns the value of $_POST[$var]. If $var is NULL (default), returns $_POST itself. In any case *slashes are stipped from the output!*
+     * @return mixed If $var is set it returns the value of $_POST[$var]. If $var is NULL (default), returns $_POST itself.
      * @see _GET(), _GP()
      */
     public static function _POST($var = null)
@@ -766,7 +756,7 @@ class GeneralUtility
      * Splits a reference to a file in 5 parts
      *
      * @param string $fileNameWithPath File name with path to be analyzed (must exist if open_basedir is set)
-     * @return array Contains keys [path], [file], [filebody], [fileext], [realFileext]
+     * @return array<string, string> Contains keys [path], [file], [filebody], [fileext], [realFileext]
      */
     public static function split_fileref($fileNameWithPath)
     {
@@ -881,7 +871,7 @@ class GeneralUtility
      *
      * @param string $string Input string, eg "123 + 456 / 789 - 4
      * @param string $operators Operators to split by, typically "/+-*
-     * @return array Array with operators and operands separated.
+     * @return array<int, array<int, string>> Array with operators and operands separated.
      * @see \TYPO3\CMS\Frontend\ContentObject\ContentObjectRenderer::calc(), \TYPO3\CMS\Frontend\Imaging\GifBuilder::calcOffset()
      */
     public static function splitCalc($string, $operators)
@@ -951,10 +941,24 @@ class GeneralUtility
         if (isset(self::$idnaStringCache[$value])) {
             return self::$idnaStringCache[$value];
         }
-        if (!self::$idnaConverter) {
-            self::$idnaConverter = new \Mso\IdnaConvert\IdnaConvert(['idn_version' => 2008]);
+        // Early return in case input is not a string or empty
+        if (!is_string($value) || empty($value)) {
+            return (string)$value;
         }
-        self::$idnaStringCache[$value] = self::$idnaConverter->encode($value);
+
+        // Split on the last "@" since addresses like "foo@bar"@example.org are valid where the only focus
+        // is an email address
+        $atPosition = strrpos($value, '@');
+        if ($atPosition !== false) {
+            $domain = substr($value, $atPosition + 1);
+            $local = substr($value, 0, $atPosition);
+            $domain = (string)HttpUtility::idn_to_ascii($domain);
+            // Return if no @ found or it is placed at the very beginning or end of the email
+            self::$idnaStringCache[$value] = $local . '@' . $domain;
+            return self::$idnaStringCache[$value];
+        }
+
+        self::$idnaStringCache[$value] = (string)HttpUtility::idn_to_ascii($value);
         return self::$idnaStringCache[$value];
     }
 
@@ -1061,7 +1065,7 @@ class GeneralUtility
      * @param string $string The string to explode
      * @param bool $removeEmptyValues If set, all empty values (='') will NOT be set in output
      * @param int $limit If positive, the result will contain a maximum of limit elements,
-     * @return array Exploded values, all converted to integers
+     * @return int[] Exploded values, all converted to integers
      */
     public static function intExplode($delimiter, $string, $removeEmptyValues = false, $limit = 0)
     {
@@ -1098,7 +1102,7 @@ class GeneralUtility
      * @param string $delimiter Delimiter string to explode with
      * @param string $string The string to explode
      * @param int $count Number of array entries
-     * @return array Exploded values
+     * @return string[] Exploded values
      */
     public static function revExplode($delimiter, $string, $count = 0)
     {
@@ -1128,7 +1132,7 @@ class GeneralUtility
      * @param int $limit If limit is set and positive, the returned array will contain a maximum of limit elements with
      *                   the last element containing the rest of string. If the limit parameter is negative, all components
      *                   except the last -limit are returned.
-     * @return array Exploded values
+     * @return string[] Exploded values
      */
     public static function trimExplode($delim, $string, $removeEmptyValues = false, $limit = 0)
     {
@@ -1191,7 +1195,7 @@ class GeneralUtility
      *
      * @param string $string GETvars string
      * @param bool $multidim If set, the string will be parsed into a multidimensional array if square brackets are used in variable names (using PHP function parse_str())
-     * @return array Array of values. All values AND keys are rawurldecoded() as they properly should be. But this means that any implosion of the array again must rawurlencode it!
+     * @return array<string, string> Array of values. All values AND keys are rawurldecoded() as they properly should be. But this means that any implosion of the array again must rawurlencode it!
      * @see implodeArrayForUrl()
      */
     public static function explodeUrl2Array($string, $multidim = null)
@@ -1270,9 +1274,10 @@ class GeneralUtility
      * If an attribute is empty, then the value for the key is empty. You can check if it existed with isset()
      *
      * @param string $tag HTML-tag string (or attributes only)
-     * @return array Array with the attribute values.
+     * @param bool $decodeEntities Whether to decode HTML entities
+     * @return string[] Array with the attribute values.
      */
-    public static function get_tag_attributes($tag)
+    public static function get_tag_attributes($tag, bool $decodeEntities = false)
     {
         $components = self::split_tag_attributes($tag);
         // Attribute name is stored here
@@ -1284,7 +1289,7 @@ class GeneralUtility
             if ($val !== '=') {
                 if ($valuemode) {
                     if ($name) {
-                        $attributes[$name] = $val;
+                        $attributes[$name] = $decodeEntities ? htmlspecialchars_decode($val) : $val;
                         $name = '';
                     }
                 } else {
@@ -1306,7 +1311,7 @@ class GeneralUtility
      * Removes tag-name if found
      *
      * @param string $tag HTML-tag string (or attributes only)
-     * @return array Array with the attribute values.
+     * @return string[] Array with the attribute values.
      */
     public static function split_tag_attributes($tag)
     {
@@ -1339,7 +1344,7 @@ class GeneralUtility
     /**
      * Implodes attributes in the array $arr for an attribute list in eg. and HTML tag (with quotes)
      *
-     * @param array $arr Array with attribute key/value pairs, eg. "bgcolor"=>"red", "border"=>0
+     * @param array<string, string> $arr Array with attribute key/value pairs, eg. "bgcolor" => "red", "border" => "0"
      * @param bool $xhtmlSafe If set the resulting attribute list will have a) all attributes in lowercase (and duplicates weeded out, first entry taking precedence) and b) all values htmlspecialchar()'ed. It is recommended to use this switch!
      * @param bool $dontOmitBlankAttribs If TRUE, don't check if values are blank. Default is to omit attributes with blank values.
      * @return string Imploded attributes, eg. 'bgcolor="red" border="0"'
@@ -1727,7 +1732,7 @@ class GeneralUtility
     /**
      * This implodes an array of XML parts (made with xml_parse_into_struct()) into XML again.
      *
-     * @param array $vals An array of XML parts, see xml2tree
+     * @param array<int, array<string, mixed>> $vals An array of XML parts, see xml2tree
      * @return string Re-compiled XML data.
      */
     public static function xmlRecompileFromStructValArray(array $vals)
@@ -2102,7 +2107,7 @@ class GeneralUtility
      * and group ownership according to $GLOBALS['TYPO3_CONF_VARS']['SYS']['createGroup']
      *
      * @param string $newFolder Absolute path to folder, see PHP mkdir() function. Removes trailing slash internally.
-     * @return bool TRUE if @mkdir went well!
+     * @return bool TRUE if operation was successful
      */
     public static function mkdir($newFolder)
     {
@@ -2180,7 +2185,7 @@ class GeneralUtility
      *
      * @param string $path Absolute path to folder, see PHP rmdir() function. Removes trailing slash internally.
      * @param bool $removeNonEmpty Allow deletion of non-empty directories
-     * @return bool TRUE if @rmdir went well!
+     * @return bool TRUE if operation was successful
      */
     public static function rmdir($path, $removeNonEmpty = false)
     {
@@ -2191,14 +2196,24 @@ class GeneralUtility
         if (file_exists($path)) {
             $OK = true;
             if (!is_link($path) && is_dir($path)) {
-                if ($removeNonEmpty == true && ($handle = @opendir($path))) {
-                    while ($OK && false !== ($file = readdir($handle))) {
+                if ($removeNonEmpty === true && ($handle = @opendir($path))) {
+                    $entries = [];
+
+                    while (false !== ($file = readdir($handle))) {
                         if ($file === '.' || $file === '..') {
                             continue;
                         }
-                        $OK = static::rmdir($path . '/' . $file, $removeNonEmpty);
+
+                        $entries[] = $path . '/' . $file;
                     }
+
                     closedir($handle);
+
+                    foreach ($entries as $entry) {
+                        if (!static::rmdir($entry, $removeNonEmpty)) {
+                            $OK = false;
+                        }
+                    }
                 }
                 if ($OK) {
                     $OK = @rmdir($path);
@@ -2260,9 +2275,10 @@ class GeneralUtility
     /**
      * Returns an array with the names of folders in a specific path
      * Will return 'error' (string) if there were an error with reading directory content.
+     * Will return null if provided path is false.
      *
      * @param string $path Path to list directories from
-     * @return array Returns an array with the directory entries as values. If no path, the return value is nothing.
+     * @return string[]|string|null Returns an array with the directory entries as values. If no path is provided, the return value will be null.
      */
     public static function get_dirs($path)
     {
@@ -2293,7 +2309,7 @@ class GeneralUtility
      * @param bool $prependPath If TRUE, the full path to the file is returned. If FALSE only the file name is returned.
      * @param string $order The sorting order. The default sorting order is alphabetical. Setting $order to 'mtime' will sort the files by modification time.
      * @param string $excludePattern A regular expression pattern of file names to exclude. For example: 'clear.gif' or '(clear.gif|.htaccess)'. The pattern will be wrapped with: '/^' and '$/'.
-     * @return array|string Array of the files found, or an error message in case the path could not be opened.
+     * @return array<string, string>|string Array of the files found, or an error message in case the path could not be opened.
      */
     public static function getFilesInDir($path, $extensionList = '', $prependPath = false, $order = '', $excludePattern = '')
     {
@@ -2352,13 +2368,13 @@ class GeneralUtility
     /**
      * Recursively gather all files and folders of a path.
      *
-     * @param array $fileArr Empty input array (will have files added to it)
+     * @param string[] $fileArr Empty input array (will have files added to it)
      * @param string $path The path to read recursively from (absolute) (include trailing slash!)
      * @param string $extList Comma list of file extensions: Only files with extensions in this list (if applicable) will be selected.
      * @param bool $regDirs If set, directories are also included in output.
      * @param int $recursivityLevels The number of levels to dig down...
      * @param string $excludePattern regex pattern of files/directories to exclude
-     * @return array An array with the found files/directories.
+     * @return array<string, string> An array with the found files/directories.
      */
     public static function getAllFilesAndFoldersInPath(array $fileArr, $path, $extList = '', $regDirs = false, $recursivityLevels = 99, $excludePattern = '')
     {
@@ -2380,9 +2396,9 @@ class GeneralUtility
     /**
      * Removes the absolute part of all files/folders in fileArr
      *
-     * @param array $fileArr The file array to remove the prefix from
+     * @param string[] $fileArr The file array to remove the prefix from
      * @param string $prefixToRemove The prefix path to remove (if found as first part of string!)
-     * @return array|string The input $fileArr processed, or a string with an error message, when an error occurred.
+     * @return string[]|string The input $fileArr processed, or a string with an error message, when an error occurred.
      */
     public static function removePrefixPathFromList(array $fileArr, $prefixToRemove)
     {
@@ -2703,7 +2719,7 @@ class GeneralUtility
         REMOTE_HOST		=	(client host)
         HTTP_USER_AGENT	=	(client user agent)
         HTTP_ACCEPT_LANGUAGE	= (client accept language)SERVER____:
-        SCRIPT_FILENAME	=	Absolute filename of script		(Differs between windows/unix). On windows 'C:\\blabla\\blabl\\' will be converted to 'C:/blabla/blabl/'Special extras:
+        SCRIPT_FILENAME	=	Absolute filename of script		(Differs between windows/unix). On windows 'C:\\some\\path\\' will be converted to 'C:/some/path/'Special extras:
         TYPO3_HOST_ONLY =		[host] = 192.168.1.4
         TYPO3_PORT =			[port] = 8080 (blank if 80, taken from host value)
         TYPO3_REQUEST_HOST = 		[scheme]://[host][:[port]]
@@ -3186,7 +3202,7 @@ class GeneralUtility
         } elseif (!(
             static::isFirstPartOfStr($filename, Environment::getProjectPath())
                   || static::isFirstPartOfStr($filename, Environment::getPublicPath())
-                )) {
+        )) {
             // absolute, but set to blank if not allowed
             $filename = '';
         }
@@ -3222,6 +3238,9 @@ class GeneralUtility
      */
     public static function isAbsPath($path)
     {
+        if (substr($path, 0, 6) === 'vfs://') {
+            return true;
+        }
         return isset($path[0]) && $path[0] === '/' || Environment::isWindows() && (strpos($path, ':/') === 1 || strpos($path, ':\\') === 1);
     }
 
@@ -3233,13 +3252,16 @@ class GeneralUtility
      */
     public static function isAllowedAbsPath($path)
     {
+        if (substr($path, 0, 6) === 'vfs://') {
+            return true;
+        }
         $lockRootPath = $GLOBALS['TYPO3_CONF_VARS']['BE']['lockRootPath'];
         return static::isAbsPath($path) && static::validPathStr($path)
             && (
                 static::isFirstPartOfStr($path, Environment::getProjectPath())
                 || static::isFirstPartOfStr($path, Environment::getPublicPath())
                 || $lockRootPath && static::isFirstPartOfStr($path, $lockRootPath)
-               );
+            );
     }
 
     /**
@@ -3734,7 +3756,9 @@ class GeneralUtility
     public static function setSingletonInstance($className, SingletonInterface $instance)
     {
         self::checkInstanceClassName($className, $instance);
-        self::$singletonInstances[$className] = $instance;
+        // Check for XCLASS registration (same is done in makeInstance() in order to store the singleton of the final class name)
+        $finalClassName = self::getClassName($className);
+        self::$singletonInstances[$finalClassName] = $instance;
     }
 
     /**
@@ -3775,7 +3799,7 @@ class GeneralUtility
      * manipulated in tests with setSingletonInstance()
      *
      * @internal
-     * @param array $newSingletonInstances $className => $object
+     * @param array<string, SingletonInterface> $newSingletonInstances
      */
     public static function resetSingletonInstances(array $newSingletonInstances)
     {
@@ -3795,7 +3819,7 @@ class GeneralUtility
      * setSingletonInstance() in tests.
      *
      * @internal
-     * @return array $className => $object
+     * @return array<string, SingletonInterface>
      */
     public static function getSingletonInstances()
     {
@@ -3811,7 +3835,7 @@ class GeneralUtility
      * have no left over instances that were previously added using addInstance().
      *
      * @internal
-     * @return array $className => $objects[]
+     * @return array<string, array<object>>
      */
     public static function getInstances()
     {
@@ -4038,7 +4062,7 @@ class GeneralUtility
      */
     public static function deprecationLog($msg)
     {
-        static::writeDeprecationLogFileEntry('GeneralUtility::deprecationLog() will be removed in TYPO3 v10.0, use "trigger_error("Given reason", E_USER_DEPRECATED);" to log deprecations.');
+        trigger_error('GeneralUtility::deprecationLog() will be removed in TYPO3 v10.0, use "trigger_error("Given reason", E_USER_DEPRECATED);" to log deprecations.', E_USER_DEPRECATED);
         trigger_error($msg, E_USER_DEPRECATED);
     }
 
@@ -4069,7 +4093,7 @@ class GeneralUtility
      */
     public static function logDeprecatedViewHelperAttribute(string $property, RenderingContextInterface $renderingContext, string $additionalMessage = '')
     {
-        static::writeDeprecationLogFileEntry('GeneralUtility::logDeprecatedViewHelperAttribute() will be removed in TYPO3 v10.0.');
+        trigger_error('GeneralUtility::logDeprecatedViewHelperAttribute() will be removed in TYPO3 v10.0.', E_USER_DEPRECATED);
         $template = $renderingContext->getTemplatePaths()->resolveTemplateFileForControllerAndActionAndFormat(
             $renderingContext->getControllerName(),
             $renderingContext->getControllerAction()
@@ -4091,7 +4115,7 @@ class GeneralUtility
      */
     public static function getDeprecationLogFileName()
     {
-        static::writeDeprecationLogFileEntry('GeneralUtility::getDeprecationLogFileName() will be removed in TYPO3 v10.0.');
+        trigger_error('GeneralUtility::getDeprecationLogFileName() will be removed in TYPO3 v10.0.', E_USER_DEPRECATED);
         return Environment::getVarPath() . '/log/deprecation_' . self::shortMD5(Environment::getProjectPath() . $GLOBALS['TYPO3_CONF_VARS']['SYS']['encryptionKey']) . '.log';
     }
 
@@ -4102,7 +4126,7 @@ class GeneralUtility
      */
     public static function logDeprecatedFunction()
     {
-        static::writeDeprecationLogFileEntry('GeneralUtility::logDeprecatedFunction() will be removed in TYPO3 v10.0.');
+        trigger_error('GeneralUtility::logDeprecatedFunction() will be removed in TYPO3 v10.0.', E_USER_DEPRECATED);
         $trail = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2);
         if ($trail[1]['type']) {
             $function = new \ReflectionMethod($trail[1]['class'], $trail[1]['function']);

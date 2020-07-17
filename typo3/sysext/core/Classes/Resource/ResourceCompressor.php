@@ -175,7 +175,7 @@ class ResourceCompressor
         $filesToInclude = [];
         foreach ($jsFiles as $key => $fileOptions) {
             // invalid section found or no concatenation allowed, so continue
-            if (empty($fileOptions['section']) || !empty($fileOptions['excludeFromConcatenation'])) {
+            if (empty($fileOptions['section']) || !empty($fileOptions['excludeFromConcatenation']) || !empty($fileOptions['defer'])) {
                 continue;
             }
             if (!isset($filesToInclude[$fileOptions['section']])) {
@@ -447,7 +447,12 @@ class ResourceCompressor
 
         // if the file is an absolute reference within the docRoot
         $absolutePath = $docRoot . '/' . $fileNameWithoutSlash;
+        // If the $filename stems from a call to PathUtility::getAbsoluteWebPath() it has a leading slash,
+        // hence isAbsolutePath() results in true, which is obviously wrong. Check file existence to be sure.
         // Calling is_file without @ for a path starting with '../' causes a PHP Warning when using open_basedir restriction
+        if (PathUtility::isAbsolutePath($filename) && @is_file($filename)) {
+            $absolutePath = $filename;
+        }
         if (@is_file($absolutePath)) {
             if (strpos($absolutePath, $this->rootPath) === 0) {
                 // the path is within the current root path, simply strip rootPath off
@@ -651,7 +656,7 @@ class ResourceCompressor
         $filename = $this->targetDirectory . 'external-' . md5($url);
         // Write only if file does not exist OR md5 of the content is not the same as fetched one
         if (!file_exists(Environment::getPublicPath() . '/' . $filename)
-            || (md5($externalContent) !== md5(file_get_contents(Environment::getPublicPath() . '/' . $filename)))
+            || !hash_equals(md5(file_get_contents(Environment::getPublicPath() . '/' . $filename)), md5($externalContent))
         ) {
             GeneralUtility::writeFile(Environment::getPublicPath() . '/' . $filename, $externalContent);
         }

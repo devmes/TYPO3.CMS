@@ -17,6 +17,7 @@ namespace TYPO3\CMS\Core\Mail;
 
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerAwareTrait;
+use TYPO3\CMS\Core\Security\BlockSerializationTrait;
 use TYPO3\CMS\Core\SingletonInterface;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
@@ -24,7 +25,7 @@ use TYPO3\CMS\Core\Utility\GeneralUtility;
  * Small wrapper for \Swift_MemorySpool
  *
  * Because TYPO3 doesn't offer a terminate signal or hook,
- * and taking in account the risk that extensions do some redirects or even exits,
+ * and taking in account the risk that extensions do some redirects or even exit,
  * we simply use the destructor of a singleton class which should be pretty much
  * at the end of a request.
  *
@@ -34,6 +35,7 @@ use TYPO3\CMS\Core\Utility\GeneralUtility;
  */
 class MemorySpool extends \Swift_MemorySpool implements SingletonInterface, LoggerAwareInterface
 {
+    use BlockSerializationTrait;
     use LoggerAwareTrait;
 
     /**

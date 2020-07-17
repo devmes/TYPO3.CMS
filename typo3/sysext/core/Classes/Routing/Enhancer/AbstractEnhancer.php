@@ -51,7 +51,101 @@ abstract class AbstractEnhancer implements EnhancerInterface
     }
 
     /**
-     * Modify the route path to add the variable names with the aspects.
+     * @param Route $route
+     * @param array $requirements
+     * @param string|null $namespace
+     */
+    protected function applyRequirements(Route $route, array $requirements, string $namespace = null)
+    {
+        $requirements = $this->getVariableProcessor()
+            ->deflateKeys($requirements, $namespace, $route->getArguments());
+        // only keep requirements that are actually part of the current route path
+        $requirements = $this->filterValuesByPathVariables($route, $requirements);
+        // Symfony's behavior on applying pattern for parameters just concerns values
+        // to be passed either to URL or to internal parameters - they are always the
+        // same, without any transformation.
+        //
+        // TYPO3 extends ("enhances") this behavior by making a difference between values
+        // for generation (resulting in a URL) and matching (resulting in query parameters)
+        // having the following implications and meaning:
+        //
+        // + since requirements in classic Symfony focus on parameters in URLs
+        //   and aspects define a mapping between URL part (e.g. 'some-example-news')
+        //   and the corresponding internal argument (e.g. 'tx_news_pi1[news]=123')
+        // + thus, the requirement definition cannot be used for resolving and generating
+        //   a route at the same time (it would have to be e.g. `[\w_._]+` AND `\d+`)
+        //
+        // Symfony's default regular expression pattern `[^/]+` (see
+        // `RouteCompiler::compilePattern()`) has to be overridden with `.+` to
+        // allow URI parameters like `some-example-news/january` as well.
+        //
+        // Existing `requirements` for TYPO3 route enhancers are not modified, only those
+        // that are not defined and would use Symfony's default pattern.
+        $requirements = $this->defineValuesByAspect($route, $requirements, '.+');
+        $route->setRequirements($requirements);
+    }
+
+    /**
+     * Only keeps values that actually have been used as variables in route path.
+     *
+     * + routePath: '/list/{page}' ('page' used as variable in route path)
+     * + values: ['entity' => 'entity...', 'page' => 'page...', 'other' => 'other...']
+     * + result: ['page' => 'page...']
+     *
+     * @param Route $route
+     * @param array $values
+     * @return array
+     */
+    protected function filterValuesByPathVariables(Route $route, array $values): array
+    {
+        return array_intersect_key(
+            $values,
+            array_flip($route->compile()->getPathVariables())
+        );
+    }
+
+    /**
+     * Overrides items having an aspect definition with a given
+     * $overrideValue in target $targetValue array.
+     *
+     * @param Route $route
+     * @param array $values
+     * @param string $targetValue
+     * @return array
+     */
+    protected function overrideValuesByAspect(Route $route, array $values, string $targetValue): array
+    {
+        foreach (array_keys($route->getAspects()) as $variableName) {
+            $values[$variableName] = $targetValue;
+        }
+        return $values;
+    }
+
+    /**
+     * Define items having an aspect definition in case they are not defined
+     * with a given $targetValue in target $targetValue array.
+     *
+     * @param Route $route
+     * @param array $values
+     * @param string $targetValue
+     * @return array
+     */
+    protected function defineValuesByAspect(Route $route, array $values, string $targetValue): array
+    {
+        foreach (array_keys($route->getAspects()) as $variableName) {
+            if (isset($values[$variableName])) {
+                continue;
+            }
+            $values[$variableName] = $targetValue;
+        }
+        return $values;
+    }
+
+    /**
+     * Modify the route path to add the variable names with the aspects, e.g.
+     *
+     * + `/{locale_modifier}/{product_title}`  -> `/products/{product_title}`
+     * + `/{!locale_modifier}/{product_title}` -> `/products/{product_title}`
      *
      * @param string $routePath
      * @return string
@@ -66,6 +160,7 @@ abstract class AbstractEnhancer implements EnhancerInterface
             $value = $aspect->modify();
             if ($value !== null) {
                 $substitutes['{' . $variableName . '}'] = $value;
+                $substitutes['{!' . $variableName . '}'] = $value;
             }
         }
         return str_replace(

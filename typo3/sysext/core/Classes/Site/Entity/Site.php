@@ -19,6 +19,7 @@ namespace TYPO3\CMS\Core\Site\Entity;
 use Psr\Http\Message\UriInterface;
 use Symfony\Component\ExpressionLanguage\SyntaxError;
 use TYPO3\CMS\Core\Authentication\BackendUserAuthentication;
+use TYPO3\CMS\Core\Context\Context;
 use TYPO3\CMS\Core\Error\PageErrorHandler\FluidPageErrorHandler;
 use TYPO3\CMS\Core\Error\PageErrorHandler\InvalidPageErrorHandlerException;
 use TYPO3\CMS\Core\Error\PageErrorHandler\PageContentErrorHandler;
@@ -266,7 +267,7 @@ class Site implements SiteInterface
         if ($includeAllLanguagesFlag && $user->checkLanguageAccess(-1)) {
             $availableLanguages[-1] = new SiteLanguage(-1, '', $this->getBase(), [
                 'title' => $this->getLanguageService()->sL('LLL:EXT:core/Resources/Private/Language/locallang_mod_web_list.xlf:multipleLanguages'),
-                'flag' => 'flag-multiple'
+                'flag' => 'flags-multiple'
             ]);
         }
 
@@ -291,7 +292,7 @@ class Site implements SiteInterface
     public function getErrorHandler(int $statusCode): PageErrorHandlerInterface
     {
         $errorHandlerConfiguration = $this->errorHandlers[$statusCode] ?? null;
-        switch ($errorHandlerConfiguration['errorHandler']) {
+        switch ($errorHandlerConfiguration['errorHandler'] ?? null) {
             case self::ERRORHANDLER_TYPE_FLUID:
                 return GeneralUtility::makeInstance(FluidPageErrorHandler::class, $statusCode, $errorHandlerConfiguration);
             case self::ERRORHANDLER_TYPE_PAGE:
@@ -345,8 +346,8 @@ class Site implements SiteInterface
     protected function sanitizeBaseUrl(string $base): string
     {
         // no protocol ("//") and the first part is no "/" (path), means that this is a domain like
-        // "www.domain.com/blabla", and we want to ensure that this one then gets a "no-scheme agnostic" part
-        if (!empty($base) && strpos($base, '//') === false && $base{0} !== '/') {
+        // "www.domain.com/subpage", and we want to ensure that this one then gets a "no-scheme agnostic" part
+        if (!empty($base) && strpos($base, '//') === false && $base[0] !== '/') {
             // either a scheme is added, or no scheme but with domain, or a path which is not absolute
             // make the base prefixed with a slash, so it is recognized as path, not as domain
             // treat as path
@@ -363,11 +364,12 @@ class Site implements SiteInterface
     /**
      * Returns the applicable router for this site. This might be configurable in the future.
      *
+     * @param  $context
      * @return RouterInterface
      */
-    public function getRouter(): RouterInterface
+    public function getRouter(Context $context = null): RouterInterface
     {
-        return GeneralUtility::makeInstance(PageRouter::class, $this);
+        return GeneralUtility::makeInstance(PageRouter::class, $this, $context);
     }
 
     /**

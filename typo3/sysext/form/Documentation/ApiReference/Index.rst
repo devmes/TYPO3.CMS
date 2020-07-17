@@ -266,6 +266,12 @@ Implement a ``FormFactory`` and build the form::
            $message->setLabel('Message');
            $message->addValidator(GeneralUtility::makeInstance(ObjectManager::class)->get(StringLengthValidator::class, ['minimum' => 5, 'maximum' => 20]));
 
+           // Creating a RadioButton/MultiCheckbox
+           $page3 = $form->createPage('page3');
+           $radio = $page3->createElement('checkbox', 'RadioButton');
+           $radio->setProperty('options', ['value1' => 'Label1', 'value2' => 'Label2']);
+           $radio->setLabel('My Radio ...');
+
            $form->createFinisher('EmailToSender', [
                'subject' => 'Hello',
                'recipientAddress' => 'foo@example.com',
@@ -422,8 +428,8 @@ You only need a class which connects to this hook. Then detect the form element 
 
 .. _apireference-frontendrendering-programmatically-apimethods:
 
-API Methods
-^^^^^^^^^^^
+Further API Methods
+^^^^^^^^^^^^^^^^^^^
 
 
 .. _apireference-frontendrendering-programmatically-apimethods-formruntime:
@@ -1141,7 +1147,7 @@ Signature::
 parseOption()
 '''''''''''''
 
-Please read :ref:`Accessing finisher options<concepts-frontendrendering-codecomponents-customfinisherimplementations-accessingoptions>`
+Please read :ref:`Accessing finisher options<concepts-finishers-customfinisherimplementations-accessingoptions>`
 
 Signature::
 
@@ -1218,7 +1224,7 @@ Signature::
 TYPO3\\CMS\\Form\\Domain\\Finishers\\FinisherVariableProvider
 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-Please read :ref:`Share data between finishers<concepts-frontendrendering-codecomponents-customfinisherimplementations-finishercontext-sharedatabetweenfinishers>`
+Please read :ref:`Share data between finishers<concepts-finishers-customfinisherimplementations-finishercontext-sharedatabetweenfinishers>`
 
 .. _apireference-frontendrendering-programmatically-apimethods-finishervariableprovider-add:
 
@@ -1592,12 +1598,12 @@ Use the hook
 
    /**
     * @param \TYPO3\CMS\Form\Domain\Runtime\FormRuntime $formRuntime
-    * @param \TYPO3\CMS\Form\Domain\Model\Renderable\CompositeRenderableInterface $currentPage
+    * @param null|\TYPO3\CMS\Form\Domain\Model\Renderable\CompositeRenderableInterface $currentPage
     * @param null|\TYPO3\CMS\Form\Domain\Model\Renderable\CompositeRenderableInterface $lastPage
     * @param mixed $elementValue submitted value of the element *before post processing*
-    * @return \TYPO3\CMS\Form\Domain\Model\Renderable\CompositeRenderableInterface
+    * @return null|\TYPO3\CMS\Form\Domain\Model\Renderable\CompositeRenderableInterface
     */
-   public function afterInitializeCurrentPage(\TYPO3\CMS\Form\Domain\Runtime\FormRuntime $formRuntime, \TYPO3\CMS\Form\Domain\Model\Renderable\CompositeRenderableInterface $currentPage, \TYPO3\CMS\Form\Domain\Model\Renderable\CompositeRenderableInterface $lastPage = null, array $requestArguments = []): \TYPO3\CMS\Form\Domain\Model\Renderable\CompositeRenderableInterface
+   public function afterInitializeCurrentPage(\TYPO3\CMS\Form\Domain\Runtime\FormRuntime $formRuntime, \TYPO3\CMS\Form\Domain\Model\Renderable\CompositeRenderableInterface $currentPage = null, \TYPO3\CMS\Form\Domain\Model\Renderable\CompositeRenderableInterface $lastPage = null, array $requestArguments = []): ?\TYPO3\CMS\Form\Domain\Model\Renderable\CompositeRenderableInterface
    {
        return $currentPage;
    }
@@ -2138,6 +2144,8 @@ templatePathAndFilename
 :aspect:`Description`
       Template path and filename for the mail body.
       The placeholder {\@format} will be replaced with the value from option ``format``
+      The template gets the current :php:`FormRuntime` assigned as :code:`form` and
+      the :php:`FinisherVariableProvider` assigned as :code:`finisherVariableProvider`.
 
 
 .. _apireference-finisheroptions-emailfinisher-options-layoutrootpaths:
@@ -2174,6 +2182,26 @@ partialRootPaths
 
 :aspect:`Description`
       Fluid partial paths
+
+
+.. _apireference-finisheroptions-emailfinisher-options-templaterootpaths:
+
+templateRootPaths
++++++++++++++++++
+
+:aspect:`Data type`
+      array
+
+:aspect:`Mandatory`
+      No
+
+:aspect:`Default value (for 'EmailToReceiver' and 'EmailToSender' declarations)`
+      undefined
+
+:aspect:`Description`
+      Fluid template paths; all templates get the current :php:`FormRuntime`
+      assigned as :code:`form` and the :php:`FinisherVariableProvider` assigned
+      as :code:`finisherVariableProvider`.
 
 
 .. _apireference-finisheroptions-emailfinisher-options-variables:
@@ -2306,7 +2334,7 @@ messageCode
       int
 
 :aspect:`Mandatory`
-      No
+      Yes
 
 :aspect:`Default value`
       null
@@ -2830,7 +2858,7 @@ databaseColumnMappings.<databaseColumnName>.value
 
 :aspect:`Description`
       The value which will be written to the database column.
-      You can also use the :ref:`FormRuntime accessor feature<concepts-frontendrendering-codecomponents-customfinisherimplementations-accessingoptions-formruntimeaccessor>` to access every getable property from the ``FormRuntime``
+      You can also use the :ref:`FormRuntime accessor feature<concepts-finishers-customfinisherimplementations-accessingoptions-formruntimeaccessor>` to access every getable property from the ``FormRuntime``
       In short: use something like ``{<formElementIdentifier>}`` to get the value from the submitted form element with the identifier ``<formElementIdentifier>``.
 
       If you use the FormRuntime accessor feature within ``options.databaseColumnMappings``, the functionality is nearly identical

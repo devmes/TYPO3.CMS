@@ -182,36 +182,66 @@ class RichTextElement extends AbstractFormElement
         $configuration = $this->prepareConfigurationForEditor();
 
         $externalPlugins = '';
-        foreach ($this->getExtraPlugins() as $pluginName => $config) {
-            if (!empty($config['config']) && !empty($configuration[$pluginName])) {
-                $config['config'] = array_replace_recursive($config['config'], $configuration[$pluginName]);
+        foreach ($this->getExtraPlugins() as $extraPluginName => $extraPluginConfig) {
+            $configName = $extraPluginConfig['configName'] ?? $extraPluginName;
+            if (!empty($extraPluginConfig['config']) && is_array($extraPluginConfig['config'])) {
+                if (empty($configuration[$configName])) {
+                    $configuration[$configName] = $extraPluginConfig['config'];
+                } elseif (is_array($configuration[$configName])) {
+                    $configuration[$configName] = array_replace_recursive($extraPluginConfig['config'], $configuration[$configName]);
+                }
             }
-            $configuration[$pluginName] = $config['config'];
-            $configuration['extraPlugins'] .= ',' . $pluginName;
+            $configuration['extraPlugins'] .= ',' . $extraPluginName;
 
             $externalPlugins .= 'CKEDITOR.plugins.addExternal(';
-            $externalPlugins .= GeneralUtility::quoteJSvalue($pluginName) . ',';
-            $externalPlugins .= GeneralUtility::quoteJSvalue($config['resource']) . ',';
+            $externalPlugins .= GeneralUtility::quoteJSvalue($extraPluginName) . ',';
+            $externalPlugins .= GeneralUtility::quoteJSvalue($extraPluginConfig['resource']) . ',';
             $externalPlugins .= '\'\');';
         }
 
+        $jsonConfiguration = json_encode($configuration);
+
+        // Make a hash of the configuration and append it to CKEDITOR.timestamp
+        // This will mitigate browser caching issue when plugins are updated
+        $configurationHash = GeneralUtility::shortMD5($jsonConfiguration);
+
         return 'function(CKEDITOR) {
+                CKEDITOR.timestamp += "-' . $configurationHash . '";
                 ' . $externalPlugins . '
-                $(function(){
-                    CKEDITOR.replace("' . $fieldId . '", ' . json_encode($configuration) . ');
-                    require([\'jquery\', \'TYPO3/CMS/Backend/FormEngine\'], function($, FormEngine) {
-                        CKEDITOR.instances["' . $fieldId . '"].on(\'change\', function() {
+                require([\'jquery\', \'TYPO3/CMS/Backend/FormEngine\'], function($, FormEngine) {
+                    $(function(){
+                        var escapedFieldSelector = \'#\' + $.escapeSelector(\'' . $fieldId . '\');
+                        CKEDITOR.replace("' . $fieldId . '", ' . $jsonConfiguration . ');
+                        CKEDITOR.instances["' . $fieldId . '"].on(\'change\', function(e) {
+                            var commands = e.sender.commands;
                             CKEDITOR.instances["' . $fieldId . '"].updateElement();
                             FormEngine.Validation.validate();
-                            FormEngine.Validation.markFieldAsChanged($(\'#' . $fieldId . '\'));
+                            FormEngine.Validation.markFieldAsChanged($(escapedFieldSelector));
+
+                            // remember changes done in maximized state and mark field as changed, once minimized again
+                            if (typeof commands.maximize !== \'undefined\' && commands.maximize.state === 1) {
+                                CKEDITOR.instances["' . $fieldId . '"].on(\'maximize\', function(e) {
+                                    $(this).off(\'maximize\');
+                                    FormEngine.Validation.markFieldAsChanged($(escapedFieldSelector));
+                                });
+                            }
+                        });
+                        CKEDITOR.instances["' . $fieldId . '"].on(\'mode\', function() {
+                            // detect field changes in source mode
+                            if (this.mode === \'source\') {
+                                var sourceArea = CKEDITOR.instances["' . $fieldId . '"].editable();
+                                sourceArea.attachListener(sourceArea, \'change\', function() {
+                                    FormEngine.Validation.markFieldAsChanged($(escapedFieldSelector));
+                                });
+                            }
                         });
                         $(document).on(\'inline:sorting-changed\', function() {
                             CKEDITOR.instances["' . $fieldId . '"].destroy();
-                            CKEDITOR.replace("' . $fieldId . '", ' . json_encode($configuration) . ');
+                            CKEDITOR.replace("' . $fieldId . '", ' . $jsonConfiguration . ');
                         });
                         $(document).on(\'flexform:sorting-changed\', function() {
                             CKEDITOR.instances["' . $fieldId . '"].destroy();
-                            CKEDITOR.replace("' . $fieldId . '", ' . json_encode($configuration) . ');
+                            CKEDITOR.replace("' . $fieldId . '", ' . $jsonConfiguration . ');
                         });
                     });
                 });
@@ -241,9 +271,10 @@ class RichTextElement extends AbstractFormElement
             $uriBuilder = GeneralUtility::makeInstance(UriBuilder::class);
             foreach ($this->rteConfiguration['externalPlugins'] as $pluginName => $configuration) {
                 $pluginConfiguration[$pluginName] = [
+                    'configName' => $configuration['configName'] ?? $pluginName,
                     'resource' => $this->resolveUrlPath($configuration['resource'])
                 ];
-                unset($configuration['resource']);
+                unset($configuration['configName'], $configuration['resource']);
 
                 if ($configuration['route']) {
                     $configuration['routeUrl'] = (string)$uriBuilder->buildUriFromRoute($configuration['route'], $urlParameters);

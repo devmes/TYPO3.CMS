@@ -14,9 +14,9 @@ namespace TYPO3\CMS\Fluid\Tests\Unit\ViewHelpers\Format;
  * The TYPO3 project - inspiring people to share!
  */
 
-use TYPO3\CMS\Fluid\Core\ViewHelper\Exception;
 use TYPO3\CMS\Fluid\ViewHelpers\Format\DateViewHelper;
 use TYPO3\TestingFramework\Fluid\Unit\ViewHelpers\ViewHelperBaseTestcase;
+use TYPO3Fluid\Fluid\Core\ViewHelper\Exception;
 
 /**
  * Test case
@@ -37,6 +37,8 @@ class DateViewHelperTest extends ViewHelperBaseTestcase
      * @var DateViewHelper
      */
     protected $viewHelper;
+
+    protected $resetSingletonInstances = true;
 
     protected function setUp()
     {
@@ -146,8 +148,8 @@ class DateViewHelperTest extends ViewHelperBaseTestcase
             ]
         );
         $actualResult = $this->viewHelper->initializeArgumentsAndRender();
-        $expectedResult = (new \DateTime())->format('Y-m-d');
-        $this->assertEquals($expectedResult, $actualResult);
+        $expectedResult = date('Y-m-d', $GLOBALS['EXEC_TIME']);
+        self::assertEquals($expectedResult, $actualResult);
     }
 
     /**
@@ -166,8 +168,8 @@ class DateViewHelperTest extends ViewHelperBaseTestcase
             ]
         );
         $actualResult = $this->viewHelper->initializeArgumentsAndRender();
-        $expectedResult = (new \DateTime())->format('Y-m-d');
-        $this->assertEquals($expectedResult, $actualResult);
+        $expectedResult = date('Y-m-d', $GLOBALS['EXEC_TIME']);
+        self::assertEquals($expectedResult, $actualResult);
     }
 
     /**

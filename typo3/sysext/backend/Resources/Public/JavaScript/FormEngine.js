@@ -196,6 +196,7 @@ define(['jquery',
 
         // execute the phpcode from $FormEngine->TBE_EDITOR_fieldChanged_func
         FormEngine.legacyFieldChangedCb();
+        FormEngineValidation.markFieldAsChanged($originalFieldEl);
       }
 
     } else {
@@ -203,7 +204,7 @@ define(['jquery',
       // The incoming value consists of the table name, an underscore and the uid
       // or just the uid
       // For a single selection field we need only the uid, so we extract it
-      var pattern = /_(\\d+)$/
+      var pattern = /_(\d+)$/
         , result = value.toString().match(pattern);
 
       if (result != null) {
@@ -706,6 +707,7 @@ define(['jquery',
       $(this).closest('.t3js-formengine-field-item').toggleClass('disabled');
     }).on('change', '.t3js-form-field-eval-null-placeholder-checkbox input[type="checkbox"]', function(e) {
       FormEngine.toggleCheckboxField($(this));
+      FormEngineValidation.markFieldAsChanged($(this));
     }).on('change', '.t3js-l10n-state-container input[type=radio]', function(event) {
       // Change handler for "l10n_state" field changes
       var $me = $(this);
@@ -811,9 +813,9 @@ define(['jquery',
     });
     $maxlengthElements.addClass('t3js-charcounter-initialized');
     $(':password').on('focus', function() {
-      $(this).attr('type', 'text').select();
+      $(this).attr({'type':'text', 'data-active-password':'true'}).select();
     }).on('blur', function() {
-      $(this).attr('type', 'password');
+      $(this).attr('type', 'password').removeAttr('data-active-password');
     });
   };
 
@@ -1072,7 +1074,8 @@ define(['jquery',
   FormEngine.initializeInputLinkToggle = function() {
     var toggleClass = '.t3js-form-field-inputlink-explanation-toggle',
       inputFieldClass = '.t3js-form-field-inputlink-input',
-      explanationClass = '.t3js-form-field-inputlink-explanation';
+      explanationClass = '.t3js-form-field-inputlink-explanation',
+      iconClass = '.t3js-form-field-inputlink-icon';
 
     // if empty, show input field
     $(explanationClass).filter(function() {
@@ -1097,7 +1100,7 @@ define(['jquery',
       explanationShown = !$explanationField.hasClass('hidden');
       $explanationField.toggleClass('hidden', explanationShown);
       $inputField.toggleClass('hidden', !explanationShown);
-      $group.find('.form-control-clearable button.close').toggleClass('hidden', !explanationShown)
+      $group.find('.form-control-clearable button.close').toggleClass('hidden', !explanationShown);
     });
 
     $(inputFieldClass).on('change', function() {
@@ -1113,6 +1116,9 @@ define(['jquery',
         $inputField.toggleClass('hidden', !explanationShown);
         $group.find('.form-control-clearable button.close').toggleClass('hidden', !explanationShown)
       }
+
+      $group.find(toggleClass).addClass('disabled').attr('disabled', 'disabled');
+      $group.find(iconClass).empty();
     });
   };
 

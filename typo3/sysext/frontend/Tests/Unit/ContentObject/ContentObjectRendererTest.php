@@ -26,7 +26,6 @@ use TYPO3\CMS\Core\Context\UserAspect;
 use TYPO3\CMS\Core\Context\WorkspaceAspect;
 use TYPO3\CMS\Core\Core\ApplicationContext;
 use TYPO3\CMS\Core\Http\ServerRequest;
-use TYPO3\CMS\Core\Http\Uri;
 use TYPO3\CMS\Core\LinkHandling\LinkService;
 use TYPO3\CMS\Core\Log\Logger;
 use TYPO3\CMS\Core\Package\PackageManager;
@@ -1133,7 +1132,8 @@ class ContentObjectRendererTest extends UnitTestCase
                     '10.' => [
                         'search' => '_',
                         'replace' => '1 || 2 || 3',
-                        'useOptionSplitReplace' => '1'
+                        'useOptionSplitReplace' => '1',
+                        'useRegExp' => '0'
                     ]
                 ]
             ],
@@ -1717,18 +1717,55 @@ class ContentObjectRendererTest extends UnitTestCase
     }
 
     /**
+     * Checks if getData() works with type "site" and base variants
+     *
+     * @test
+     */
+    public function getDataWithTypeSiteWithBaseVariants(): void
+    {
+        $cacheManagerProphecy = $this->prophesize(CacheManager::class);
+        $cacheProphecy = $this->prophesize(CacheFrontendInterface::class);
+        $cacheManagerProphecy->getCache('cache_core')->willReturn($cacheProphecy->reveal());
+        GeneralUtility::setSingletonInstance(CacheManager::class, $cacheManagerProphecy->reveal());
+        putenv('LOCAL_DEVELOPMENT=1');
+
+        $site = new Site('my-site', 123, [
+            'base' => 'http://prod.com',
+            'baseVariants' => [
+                [
+                    'base' => 'http://staging.com',
+                    'condition' => 'applicationContext == "Production/Staging"'
+                ],
+                [
+                    'base' => 'http://dev.com',
+                    'condition' => 'getenv("LOCAL_DEVELOPMENT") == 1'
+                ],
+            ]
+        ]);
+
+        $serverRequest = $this->prophesize(ServerRequestInterface::class);
+        $serverRequest->getAttribute('site')->willReturn($site);
+        $GLOBALS['TYPO3_REQUEST'] = $serverRequest->reveal();
+        $this->assertEquals('http://dev.com', $this->subject->getData('site:base'));
+    }
+
+    /**
      * Checks if getData() works with type "siteLanguage"
      *
      * @test
      */
     public function getDataWithTypeSiteLanguage(): void
     {
-        $site = new SiteLanguage(1, 'de-de', new Uri('/'), [
+        $site = $this->createSiteWithLanguage([
+            'base' => '/',
+            'languageId' => 1,
+            'locale' => 'de_DE',
             'title' => 'languageTitle',
             'navigationTitle' => 'German'
         ]);
+        $language = $site->getLanguageById(1);
         $serverRequest = $this->prophesize(ServerRequestInterface::class);
-        $serverRequest->getAttribute('language')->willReturn($site);
+        $serverRequest->getAttribute('language')->willReturn($language);
         $GLOBALS['TYPO3_REQUEST'] = $serverRequest->reveal();
         $this->assertEquals('German', $this->subject->getData('siteLanguage:navigationTitle'));
     }
@@ -2633,6 +2670,7 @@ class ContentObjectRendererTest extends UnitTestCase
                             'constants' => '1',
                         ],
                         'typolink.' => [
+                            'directImageLink' => false,
                             'extTarget.' => [
                                 'override' => '',
                             ],
@@ -2714,6 +2752,7 @@ class ContentObjectRendererTest extends UnitTestCase
             'Link to url' => [
                 'TYPO3',
                 [
+                    'directImageLink' => false,
                     'parameter' => 'http://typo3.org',
                 ],
                 '<a href="http://typo3.org">TYPO3</a>',
@@ -2721,6 +2760,7 @@ class ContentObjectRendererTest extends UnitTestCase
             'Link to url without schema' => [
                 'TYPO3',
                 [
+                    'directImageLink' => false,
                     'parameter' => 'typo3.org',
                 ],
                 '<a href="http://typo3.org">TYPO3</a>',
@@ -2728,6 +2768,7 @@ class ContentObjectRendererTest extends UnitTestCase
             'Link to url without link text' => [
                 '',
                 [
+                    'directImageLink' => false,
                     'parameter' => 'http://typo3.org',
                 ],
                 '<a href="http://typo3.org">http://typo3.org</a>',
@@ -2752,6 +2793,7 @@ class ContentObjectRendererTest extends UnitTestCase
             'Link to url with script tag' => [
                 '',
                 [
+                    'directImageLink' => false,
                     'parameter' => 'http://typo3.org<script>alert(123)</script>',
                 ],
                 '<a href="http://typo3.org&lt;script&gt;alert(123)&lt;/script&gt;">http://typo3.org&lt;script&gt;alert(123)&lt;/script&gt;</a>',
@@ -2886,7 +2928,7 @@ class ContentObjectRendererTest extends UnitTestCase
                 ],
                 'some.body@test.typo3.org',
                 'mailto:some.body@test.typo3.org',
-                '<a href="javascript:linkTo_UnCryptMailto(\'nbjmup+tpnf\/cpezAuftu\/uzqp4\/psh\');">some.body(at)test.typo3.org</a>',
+                '<a href="javascript:linkTo_UnCryptMailto(%27nbjmup%2Btpnf%5C%2FcpezAuftu%5C%2Fuzqp4%5C%2Fpsh%27);">some.body(at)test.typo3.org</a>',
             ],
             'mono-alphabetic substitution offset +1 with at substitution' => [
                 [
@@ -2896,7 +2938,7 @@ class ContentObjectRendererTest extends UnitTestCase
                 ],
                 'some.body@test.typo3.org',
                 'mailto:some.body@test.typo3.org',
-                '<a href="javascript:linkTo_UnCryptMailto(\'nbjmup+tpnf\/cpezAuftu\/uzqp4\/psh\');">some.body@test.typo3.org</a>',
+                '<a href="javascript:linkTo_UnCryptMailto(%27nbjmup%2Btpnf%5C%2FcpezAuftu%5C%2Fuzqp4%5C%2Fpsh%27);">some.body@test.typo3.org</a>',
             ],
             'mono-alphabetic substitution offset +1 with at and dot substitution' => [
                 [
@@ -2906,7 +2948,7 @@ class ContentObjectRendererTest extends UnitTestCase
                 ],
                 'some.body@test.typo3.org',
                 'mailto:some.body@test.typo3.org',
-                '<a href="javascript:linkTo_UnCryptMailto(\'nbjmup+tpnf\/cpezAuftu\/uzqp4\/psh\');">some.body(at)test.typo3(dot)org</a>',
+                '<a href="javascript:linkTo_UnCryptMailto(%27nbjmup%2Btpnf%5C%2FcpezAuftu%5C%2Fuzqp4%5C%2Fpsh%27);">some.body(at)test.typo3(dot)org</a>',
             ],
             'mono-alphabetic substitution offset -1 with at and dot substitution' => [
                 [
@@ -2916,7 +2958,17 @@ class ContentObjectRendererTest extends UnitTestCase
                 ],
                 'some.body@test.typo3.org',
                 'mailto:some.body@test.typo3.org',
-                '<a href="javascript:linkTo_UnCryptMailto(\'lzhksn9rnld-ancxZsdrs-sxon2-nqf\');">some.body(at)test.typo3(dot)org</a>',
+                '<a href="javascript:linkTo_UnCryptMailto(%27lzhksn9rnld-ancxZsdrs-sxon2-nqf%27);">some.body(at)test.typo3(dot)org</a>',
+            ],
+            'mono-alphabetic substitution offset 2 with at and dot substitution and encoded subject' => [
+                [
+                    'spamProtectEmailAddresses' => '2',
+                    'spamProtectEmailAddresses_atSubst' => '(at)',
+                    'spamProtectEmailAddresses_lastDotSubst' => '(dot)',
+                ],
+                'some.body@test.typo3.org',
+                'mailto:some.body@test.typo3.org?subject=foo%20bar',
+                '<a href="javascript:linkTo_UnCryptMailto(%27ocknvq%2Cuqog0dqfaBvguv0varq50qti%3Fuwdlgev%3Dhqq%2542dct%27);">some.body@test.typo3.org</a>',
             ],
             'entity substitution with at and dot substitution' => [
                 [
@@ -2950,6 +3002,7 @@ class ContentObjectRendererTest extends UnitTestCase
             'Link to file' => [
                 'My file',
                 [
+                    'directImageLink' => false,
                     'parameter' => 'fileadmin/foo.bar',
                 ],
                 '<a href="fileadmin/foo.bar">My file</a>',
@@ -2957,6 +3010,7 @@ class ContentObjectRendererTest extends UnitTestCase
             'Link to file without link text' => [
                 '',
                 [
+                    'directImageLink' => false,
                     'parameter' => 'fileadmin/foo.bar',
                 ],
                 '<a href="fileadmin/foo.bar">fileadmin/foo.bar</a>',
@@ -3031,6 +3085,7 @@ class ContentObjectRendererTest extends UnitTestCase
             'Link to file with script tag in name' => [
                 '',
                 [
+                    'directImageLink' => false,
                     'parameter' => 'fileadmin/<script>alert(123)</script>',
                 ],
                 '<a href="fileadmin/&lt;script&gt;alert(123)&lt;/script&gt;">fileadmin/&lt;script&gt;alert(123)&lt;/script&gt;</a>',
@@ -3083,6 +3138,7 @@ class ContentObjectRendererTest extends UnitTestCase
             'Link to file' => [
                 'My file',
                 [
+                    'directImageLink' => false,
                     'parameter' => 'fileadmin/foo.bar',
                 ],
                 '/',
@@ -3091,6 +3147,7 @@ class ContentObjectRendererTest extends UnitTestCase
             'Link to file with longer absRefPrefix' => [
                 'My file',
                 [
+                    'directImageLink' => false,
                     'parameter' => 'fileadmin/foo.bar',
                 ],
                 '/sub/',
@@ -3099,6 +3156,7 @@ class ContentObjectRendererTest extends UnitTestCase
             'Link to absolute file' => [
                 'My file',
                 [
+                    'directImageLink' => false,
                     'parameter' => '/images/foo.bar',
                 ],
                 '/',
@@ -3107,6 +3165,7 @@ class ContentObjectRendererTest extends UnitTestCase
             'Link to absolute file with longer absRefPrefix' => [
                 'My file',
                 [
+                    'directImageLink' => false,
                     'parameter' => '/images/foo.bar',
                 ],
                 '/sub/',
@@ -3115,6 +3174,7 @@ class ContentObjectRendererTest extends UnitTestCase
             'Link to absolute file with identical longer absRefPrefix' => [
                 'My file',
                 [
+                    'directImageLink' => false,
                     'parameter' => '/sub/fileadmin/foo.bar',
                 ],
                 '/sub/',
@@ -3123,6 +3183,7 @@ class ContentObjectRendererTest extends UnitTestCase
             'Link to file with empty absRefPrefix' => [
                 'My file',
                 [
+                    'directImageLink' => false,
                     'parameter' => 'fileadmin/foo.bar',
                 ],
                 '',
@@ -3131,6 +3192,7 @@ class ContentObjectRendererTest extends UnitTestCase
             'Link to absolute file with empty absRefPrefix' => [
                 'My file',
                 [
+                    'directImageLink' => false,
                     'parameter' => '/fileadmin/foo.bar',
                 ],
                 '',
@@ -6342,10 +6404,16 @@ class ContentObjectRendererTest extends UnitTestCase
     public function stdWrap_langViaSiteLanguage(string $expected, string $input, array $conf, string $language): void
     {
         if ($language) {
+            $site = $this->createSiteWithLanguage([
+                'base' => '/',
+                'languageId' => 2,
+                'locale' => 'en_UK',
+                'typo3Language' => $language,
+            ]);
             $request = new ServerRequest();
             $GLOBALS['TYPO3_REQUEST'] = $request->withAttribute(
                 'language',
-                new SiteLanguage(2, 'en_UK', new Uri(), ['typo3Language' => $language])
+                $site->getLanguageById(2)
             );
         }
         $this->assertSame(
@@ -8314,4 +8382,25 @@ class ContentObjectRendererTest extends UnitTestCase
     /***************************************************************************
      * End: Mixed tests
      ***************************************************************************/
+
+    /**
+     * @param array $languageConfiguration
+     * @return Site
+     */
+    private function createSiteWithLanguage(array $languageConfiguration): Site
+    {
+        return new Site('test', 1, [
+            'identifier' => 'test',
+            'rootPageId' => 1,
+            'base' => '/',
+            'languages' => [
+                array_merge(
+                    $languageConfiguration,
+                    [
+                        'base' => '/',
+                    ]
+                )
+            ]
+        ]);
+    }
 }

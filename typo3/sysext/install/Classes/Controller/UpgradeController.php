@@ -24,6 +24,7 @@ use Symfony\Component\Finder\Finder;
 use Symfony\Component\Finder\SplFileInfo;
 use TYPO3\CMS\Core\Core\Environment;
 use TYPO3\CMS\Core\Database\ConnectionPool;
+use TYPO3\CMS\Core\Database\Schema\Exception\StatementException;
 use TYPO3\CMS\Core\FormProtection\FormProtectionFactory;
 use TYPO3\CMS\Core\FormProtection\InstallToolFormProtection;
 use TYPO3\CMS\Core\Http\JsonResponse;
@@ -31,8 +32,10 @@ use TYPO3\CMS\Core\Messaging\FlashMessage;
 use TYPO3\CMS\Core\Messaging\FlashMessageQueue;
 use TYPO3\CMS\Core\Migrations\TcaMigration;
 use TYPO3\CMS\Core\Package\Package;
+use TYPO3\CMS\Core\Package\PackageInterface;
 use TYPO3\CMS\Core\Package\PackageManager;
 use TYPO3\CMS\Core\Registry;
+use TYPO3\CMS\Core\Service\OpcodeCacheService;
 use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Install\ExtensionScanner\Php\CodeStatistics;
@@ -42,6 +45,7 @@ use TYPO3\CMS\Install\ExtensionScanner\Php\Matcher\ArrayGlobalMatcher;
 use TYPO3\CMS\Install\ExtensionScanner\Php\Matcher\ClassConstantMatcher;
 use TYPO3\CMS\Install\ExtensionScanner\Php\Matcher\ClassNameMatcher;
 use TYPO3\CMS\Install\ExtensionScanner\Php\Matcher\ConstantMatcher;
+use TYPO3\CMS\Install\ExtensionScanner\Php\Matcher\ConstructorArgumentMatcher;
 use TYPO3\CMS\Install\ExtensionScanner\Php\Matcher\FunctionCallMatcher;
 use TYPO3\CMS\Install\ExtensionScanner\Php\Matcher\InterfaceMethodChangedMatcher;
 use TYPO3\CMS\Install\ExtensionScanner\Php\Matcher\MethodAnnotationMatcher;
@@ -57,6 +61,7 @@ use TYPO3\CMS\Install\ExtensionScanner\Php\Matcher\PropertyExistsStaticMatcher;
 use TYPO3\CMS\Install\ExtensionScanner\Php\Matcher\PropertyProtectedMatcher;
 use TYPO3\CMS\Install\ExtensionScanner\Php\Matcher\PropertyPublicMatcher;
 use TYPO3\CMS\Install\ExtensionScanner\Php\MatcherFactory;
+use TYPO3\CMS\Install\Service\ClearCacheService;
 use TYPO3\CMS\Install\Service\CoreUpdateService;
 use TYPO3\CMS\Install\Service\CoreVersionService;
 use TYPO3\CMS\Install\Service\LoadTcaService;
@@ -118,6 +123,10 @@ class UpgradeController extends AbstractController
         [
             'class' => ConstantMatcher::class,
             'configurationFile' => 'EXT:install/Configuration/ExtensionScanner/Php/ConstantMatcher.php',
+        ],
+        [
+            'class' => ConstructorArgumentMatcher::class,
+            'configurationFile' => 'EXT:install/Configuration/ExtensionScanner/Php/ConstructorArgumentMatcher.php',
         ],
         [
             'class' => PropertyAnnotationMatcher::class,
@@ -186,6 +195,7 @@ class UpgradeController extends AbstractController
     public function cardsAction(ServerRequestInterface $request): ResponseInterface
     {
         $view = $this->initializeStandaloneView($request, 'Upgrade/Cards.html');
+        $view->assign('extensionFoldersInTypo3conf', (new Finder())->directories()->in(Environment::getExtensionsPath())->depth(0)->count());
         return new JsonResponse([
             'success' => true,
             'html' => $view->render(),
@@ -385,7 +395,6 @@ class UpgradeController extends AbstractController
 
         return new JsonResponse([
             'success' => true,
-            'extensions' => array_keys($this->packageManager->getActivePackages()),
             'html' => $view->render(),
         ]);
     }
@@ -398,16 +407,20 @@ class UpgradeController extends AbstractController
      */
     public function extensionCompatTesterLoadExtLocalconfAction(ServerRequestInterface $request): ResponseInterface
     {
-        $extension = $request->getParsedBody()['install']['extension'];
+        $brokenExtensions = [];
         foreach ($this->packageManager->getActivePackages() as $package) {
-            $this->extensionCompatTesterLoadExtLocalconfForExtension($package);
-            if ($package->getPackageKey() === $extension) {
-                break;
+            try {
+                $this->extensionCompatTesterLoadExtLocalconfForExtension($package);
+            } catch (\Throwable $e) {
+                $brokenExtensions[] = [
+                    'name' => $package->getPackageKey(),
+                    'isProtected' => $package->isProtected()
+                ];
             }
         }
         return new JsonResponse([
-            'success' => true,
-        ]);
+            'brokenExtensions' => $brokenExtensions,
+        ], empty($brokenExtensions) ? 200 : 500);
     }
 
     /**
@@ -418,21 +431,25 @@ class UpgradeController extends AbstractController
      */
     public function extensionCompatTesterLoadExtTablesAction(ServerRequestInterface $request): ResponseInterface
     {
-        $extension = $request->getParsedBody()['install']['extension'];
+        $brokenExtensions = [];
         $activePackages = $this->packageManager->getActivePackages();
         foreach ($activePackages as $package) {
             // Load all ext_localconf files first
             $this->extensionCompatTesterLoadExtLocalconfForExtension($package);
         }
         foreach ($activePackages as $package) {
-            $this->extensionCompatTesterLoadExtTablesForExtension($package);
-            if ($package->getPackageKey() === $extension) {
-                break;
+            try {
+                $this->extensionCompatTesterLoadExtTablesForExtension($package);
+            } catch (\Throwable $e) {
+                $brokenExtensions[] = [
+                    'name' => $package->getPackageKey(),
+                    'isProtected' => $package->isProtected()
+                ];
             }
         }
         return new JsonResponse([
-            'success' => true,
-        ]);
+            'brokenExtensions' => $brokenExtensions,
+        ], empty($brokenExtensions) ? 200 : 500);
     }
 
     /**
@@ -455,6 +472,9 @@ class UpgradeController extends AbstractController
         if (ExtensionManagementUtility::isLoaded($extension)) {
             try {
                 ExtensionManagementUtility::unloadExtension($extension);
+                GeneralUtility::makeInstance(ClearCacheService::class)->clearAll();
+                GeneralUtility::makeInstance(OpcodeCacheService::class)->clearAllActive();
+
                 $messageQueue->enqueue(new FlashMessage(
                     'Extension "' . $extension . '" unloaded.',
                     '',
@@ -627,11 +647,17 @@ class UpgradeController extends AbstractController
         // Parse PHP file to AST and traverse tree calling visitors
         $statements = $parser->parse(file_get_contents($absoluteFilePath));
 
-        $traverser = new NodeTraverser();
         // The built in NameResolver translates class names shortened with 'use' to fully qualified
         // class names at all places. Incredibly useful for us and added as first visitor.
+        // IMPORTANT: first process completely to resolve fully qualified names of arguments
+        // (otherwise GeneratorClassesResolver will NOT get reliable results)
+        $traverser = new NodeTraverser();
         $traverser->addVisitor(new NameResolver());
-        // Understand makeInstance('My\\Package\\Foo\\Bar') as fqdn class name in first argument
+        $statements = $traverser->traverse($statements);
+
+        // IMPORTANT: second process to actually work on the pre-resolved statements
+        $traverser = new NodeTraverser();
+        // Understand GeneralUtility::makeInstance('My\\Package\\Foo\\Bar') as fqdn class name in first argument
         $traverser->addVisitor(new GeneratorClassesResolver());
         // Count ignored lines, effective code lines, ...
         $statistics = new CodeStatistics();
@@ -717,6 +743,8 @@ class UpgradeController extends AbstractController
         $loadTcaService->loadExtensionTablesWithoutMigration();
         $baseTca = $GLOBALS['TCA'];
         foreach ($this->packageManager->getActivePackages() as $package) {
+            $this->extensionCompatTesterLoadExtLocalconfForExtension($package);
+
             $extensionKey = $package->getPackageKey();
             $extTablesPath = $package->getPackagePath() . 'ext_tables.php';
             if (@file_exists($extTablesPath)) {
@@ -857,9 +885,14 @@ class UpgradeController extends AbstractController
         // ext_localconf, db and ext_tables must be loaded for the updates :(
         $this->loadExtLocalconfDatabaseAndExtTables();
         $upgradeWizardsService = new UpgradeWizardsService();
-        $adds = $upgradeWizardsService->getBlockingDatabaseAdds();
+        $adds = [];
         $needsUpdate = false;
-        if (!empty($adds)) {
+        try {
+            $adds = $upgradeWizardsService->getBlockingDatabaseAdds();
+            if (!empty($adds)) {
+                $needsUpdate = true;
+            }
+        } catch (StatementException $exception) {
             $needsUpdate = true;
         }
         return new JsonResponse([
@@ -1108,9 +1141,9 @@ class UpgradeController extends AbstractController
      * Loads ext_localconf.php for a single extension. Method is a modified copy of
      * the original bootstrap method.
      *
-     * @param Package $package
+     * @param PackageInterface $package
      */
-    protected function extensionCompatTesterLoadExtLocalconfForExtension(Package $package)
+    protected function extensionCompatTesterLoadExtLocalconfForExtension(PackageInterface $package)
     {
         $extLocalconfPath = $package->getPackagePath() . 'ext_localconf.php';
         // This is the main array meant to be manipulated in the ext_localconf.php files
@@ -1131,9 +1164,9 @@ class UpgradeController extends AbstractController
      * Loads ext_tables.php for a single extension. Method is a modified copy of
      * the original bootstrap method.
      *
-     * @param Package $package
+     * @param PackageInterface $package
      */
-    protected function extensionCompatTesterLoadExtTablesForExtension(Package $package)
+    protected function extensionCompatTesterLoadExtTablesForExtension(PackageInterface $package)
     {
         $extTablesPath = $package->getPackagePath() . 'ext_tables.php';
         // In general it is recommended to not rely on it to be globally defined in that
@@ -1176,7 +1209,6 @@ class UpgradeController extends AbstractController
         $documentationFiles = $documentationFileService->findDocumentationFiles(
             str_replace('\\', '/', realpath(ExtensionManagementUtility::extPath('core') . 'Documentation/Changelog/' . $version))
         );
-        $documentationFiles = array_reverse($documentationFiles);
 
         $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('sys_registry');
         $filesMarkedAsRead = $queryBuilder

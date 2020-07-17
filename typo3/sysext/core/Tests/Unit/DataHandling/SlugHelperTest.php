@@ -301,6 +301,36 @@ class SlugHelperTest extends UnitTestCase
                 '应用',
                 '/应用'
             ],
+            'hindi' => [
+                [],
+                'कंपनी',
+                '/कंपनी'
+            ],
+            'hindi with plain accent character' => [
+                [],
+                'कंपनी^',
+                '/कंपनी'
+            ],
+            'hindi with combined accent character' => [
+                [],
+                'कंपनीâ',
+                '/कंपनीa'
+            ],
+            'japanese numbers (sino-japanese)' => [
+                [],
+                'さん',
+                '/さん'
+            ],
+            'japanese numbers (kanji)' => [
+                [],
+                '三つ',
+                '/三つ'
+            ],
+            'persian numbers' => [
+                [],
+                '۴',
+                '/4'
+            ],
         ];
     }
 
@@ -614,6 +644,43 @@ class SlugHelperTest extends UnitTestCase
                 'subtitle' => $input['subtitle'],
                 'seo_title' => $input['seo_title'] ?? '',
                 'uid' => 13
+            ], 13)
+        );
+    }
+
+    /**
+     * @test
+     */
+    public function generateSlugWithHookModifiers()
+    {
+        $options = [];
+        $options['fallbackCharacter'] = '-';
+        $options['generatorOptions'] = [
+            'fields' => ['title'],
+            'postModifiers' => [
+                0 => function ($parameters, $subject) {
+                    $slug = $parameters['slug'];
+                    if ($parameters['pid'] == 13) {
+                        $slug = 'prepend' . $slug;
+                    }
+                    return $slug;
+                }
+            ]
+        ];
+        $subject = new SlugHelper(
+            'pages',
+            'slug',
+            $options
+        );
+        $expected = '/prepend/products';
+        static::assertEquals(
+            $expected,
+            $subject->generate([
+                'title' => 'Products',
+                'nav_title' => 'Best products',
+                'subtitle' => 'Product subtitle',
+                'seo_title' => 'SEO product title',
+                'uid' => 23
             ], 13)
         );
     }

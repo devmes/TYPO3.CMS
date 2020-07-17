@@ -20,21 +20,28 @@ use TYPO3Fluid\Fluid\Core\ViewHelper\Traits\CompileWithRenderStatic;
 
 /**
  * Formats a number with custom precision, decimal point and grouped thousands.
- *
- * @see http://www.php.net/manual/en/function.number-format.php
+ * See https://www.php.net/manual/function.number-format.php.
  *
  * Examples
+ * ========
+ *
+ * Defaults
  * --------
  *
- * Defaults::
+ * ::
  *
  *    <f:format.number>423423.234</f:format.number>
  *
  * ``423,423.20``
  *
- * With all parameters::
+ * With all parameters
+ * -------------------
  *
- *    <f:format.number decimals="1" decimalSeparator="," thousandsSeparator=".">423423.234</f:format.number>
+ * ::
+ *
+ *    <f:format.number decimals="1" decimalSeparator="," thousandsSeparator=".">
+ *        423423.234
+ *    </f:format.number>
  *
  * ``423.423,2``
  */
@@ -78,6 +85,6 @@ class NumberViewHelper extends AbstractViewHelper
         $thousandsSeparator = $arguments['thousandsSeparator'];
 
         $stringToFormat = $renderChildrenClosure();
-        return number_format($stringToFormat, $decimals, $decimalSeparator, $thousandsSeparator);
+        return number_format((float)$stringToFormat, $decimals, $decimalSeparator, $thousandsSeparator);
     }
 }

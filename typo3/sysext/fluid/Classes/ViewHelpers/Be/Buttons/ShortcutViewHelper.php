@@ -20,18 +20,20 @@ use TYPO3\CMS\Fluid\ViewHelpers\Be\AbstractBackendViewHelper;
 use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
 
 /**
- * View helper which returns shortcut button with icon
- * Note: This view helper is experimental!
+ * ViewHelper which returns shortcut button with icon.
+ *
+ * .. note::
+ *    This ViewHelper is experimental!
  *
  * Examples
- * --------
+ * ========
  *
  * Default::
  *
  *    <f:be.buttons.shortcut />
  *
  * Shortcut button as known from the TYPO3 backend.
- * By default the current page id, module name and all module arguments will be stored
+ * By default the current page id, module name and all module arguments will be stored.
  *
  * Explicitly set parameters to be stored in the shortcut::
  *
@@ -42,7 +44,7 @@ use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
  *
  * .. note:
  *
- *    Normally you won't need to set getVars & setVars parameters in Extbase modules
+ *    Normally you won't need to set getVars & setVars parameters in Extbase modules.
  */
 class ShortcutViewHelper extends AbstractBackendViewHelper
 {

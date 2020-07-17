@@ -47,6 +47,17 @@ class FileLinkHandlerTest extends UnitTestCase
                 ],
                 't3://file?identifier=fileadmin%2Fdeep%2Fdown.jpg'
             ],
+            'file without FAL and anchor - cool style' => [
+                [
+                    'identifier' => 'fileadmin/deep/down.jpg',
+                    'fragment' => 'page-13'
+                ],
+                [
+                    'file' => 'fileadmin/deep/down.jpg',
+                    'fragment' => 'page-13'
+                ],
+                't3://file?identifier=fileadmin%2Fdeep%2Fdown.jpg#page-13'
+            ],
             'file with FAL uid - cool style' => [
                 [
                     'uid' => 23
@@ -55,6 +66,17 @@ class FileLinkHandlerTest extends UnitTestCase
                     'file' => 23
                 ],
                 't3://file?uid=23'
+            ],
+            'file with FAL uid and anchor - cool style' => [
+                [
+                    'uid' => 23,
+                    'fragment' => 'page-13'
+                ],
+                [
+                    'file' => 23,
+                    'fragment' => 'page-13'
+                ],
+                't3://file?uid=23#page-13'
             ],
         ];
     }
@@ -84,6 +106,7 @@ class FileLinkHandlerTest extends UnitTestCase
         // fake methods to return proper objects
         $fileObject = new File(['identifier' => $expected['file'], 'name' => 'foobar.txt'], $storage);
         $factory->expects($this->any())->method('getFileObject')->with($expected['file'])->willReturn($fileObject);
+        $factory->expects($this->any())->method('getFileObjectFromCombinedIdentifier')->with($expected['file'])->willReturn($fileObject);
         $expected['file'] = $fileObject;
 
         /** @var FileLinkHandler|\PHPUnit_Framework_MockObject_MockObject|\TYPO3\TestingFramework\Core\AccessibleObjectInterface $subject */

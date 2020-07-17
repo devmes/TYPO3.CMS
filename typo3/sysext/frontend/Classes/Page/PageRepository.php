@@ -28,8 +28,10 @@ use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\QueryHelper;
 use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
+use TYPO3\CMS\Core\Database\Query\Restriction\FrontendGroupRestriction;
 use TYPO3\CMS\Core\Database\Query\Restriction\FrontendRestrictionContainer;
 use TYPO3\CMS\Core\Database\Query\Restriction\FrontendWorkspaceRestriction;
+use TYPO3\CMS\Core\Database\Query\Restriction\HiddenRestriction;
 use TYPO3\CMS\Core\Error\Http\ShortcutTargetPageNotFoundException;
 use TYPO3\CMS\Core\Resource\Exception\FileDoesNotExistException;
 use TYPO3\CMS\Core\Resource\FileRepository;
@@ -232,32 +234,40 @@ class PageRepository implements LoggerAwareInterface
     {
         $this->where_groupAccess = '';
 
-        $expressionBuilder = GeneralUtility::makeInstance(ConnectionPool::class)
-            ->getQueryBuilderForTable('pages')
-            ->expr();
-        if ($this->versioningWorkspaceId > 0) {
-            // For version previewing, make sure that enable-fields are not
-            // de-selecting hidden pages - we need versionOL() to unset them only
-            // if the overlay record instructs us to.
-            // Clear where_hid_del and restrict to live and current workspaces
-            $this->where_hid_del = ' AND ' . $expressionBuilder->andX(
-                $expressionBuilder->eq('pages.deleted', 0),
-                $expressionBuilder->orX(
-                    $expressionBuilder->eq('pages.t3ver_wsid', 0),
-                    $expressionBuilder->eq('pages.t3ver_wsid', (int)$this->versioningWorkspaceId)
-                ),
-                $expressionBuilder->lt('pages.doktype', 200)
-            );
+        $cache = $this->getRuntimeCache();
+        $cacheIdentifier = 'PageRepository_hidDelWhere' . ($show_hidden ? 'ShowHidden' : '') . '_' . (int)$this->versioningWorkspaceId;
+        $cacheEntry = $cache->get($cacheIdentifier);
+        if ($cacheEntry) {
+            $this->where_hid_del = $cacheEntry;
         } else {
-            // add starttime / endtime, and check for hidden/deleted
-            // Filter out new/deleted place-holder pages in case we are NOT in a
-            // versioning preview (that means we are online!)
-            $this->where_hid_del = ' AND ' . (string)$expressionBuilder->andX(
-                QueryHelper::stripLogicalOperatorPrefix(
-                    $this->enableFields('pages', $show_hidden, ['fe_group' => true], true)
-                ),
-                $expressionBuilder->lt('pages.doktype', 200)
-            );
+            $expressionBuilder = GeneralUtility::makeInstance(ConnectionPool::class)
+                ->getQueryBuilderForTable('pages')
+                ->expr();
+            if ($this->versioningWorkspaceId > 0) {
+                // For version previewing, make sure that enable-fields are not
+                // de-selecting hidden pages - we need versionOL() to unset them only
+                // if the overlay record instructs us to.
+                // Clear where_hid_del and restrict to live and current workspaces
+                $this->where_hid_del = ' AND ' . $expressionBuilder->andX(
+                    $expressionBuilder->eq('pages.deleted', 0),
+                    $expressionBuilder->orX(
+                        $expressionBuilder->eq('pages.t3ver_wsid', 0),
+                        $expressionBuilder->eq('pages.t3ver_wsid', (int)$this->versioningWorkspaceId)
+                    ),
+                    $expressionBuilder->lt('pages.doktype', 200)
+                );
+            } else {
+                // add starttime / endtime, and check for hidden/deleted
+                // Filter out new/deleted place-holder pages in case we are NOT in a
+                // versioning preview (that means we are online!)
+                $this->where_hid_del = ' AND ' . (string)$expressionBuilder->andX(
+                    QueryHelper::stripLogicalOperatorPrefix(
+                        $this->enableFields('pages', $show_hidden, ['fe_group' => true], true)
+                    ),
+                    $expressionBuilder->lt('pages.doktype', 200)
+                );
+            }
+            $cache->set($cacheIdentifier, $this->where_hid_del);
         }
         if (is_array($GLOBALS['TYPO3_CONF_VARS']['SC_OPTIONS'][self::class]['init'] ?? false)) {
             foreach ($GLOBALS['TYPO3_CONF_VARS']['SC_OPTIONS'][self::class]['init'] as $classRef) {
@@ -340,8 +350,12 @@ class PageRepository implements LoggerAwareInterface
                 QueryHelper::stripLogicalOperatorPrefix($this->where_hid_del)
             );
 
+        $originalWhereGroupAccess = '';
         if (!$disableGroupAccessCheck) {
             $queryBuilder->andWhere(QueryHelper::stripLogicalOperatorPrefix($this->where_groupAccess));
+        } else {
+            $originalWhereGroupAccess = $this->where_groupAccess;
+            $this->where_groupAccess = '';
         }
 
         $row = $queryBuilder->execute()->fetch();
@@ -351,6 +365,11 @@ class PageRepository implements LoggerAwareInterface
                 $result = $this->getPageOverlay($row);
             }
         }
+
+        if ($disableGroupAccessCheck) {
+            $this->where_groupAccess = $originalWhereGroupAccess;
+        }
+
         $cache->set($cacheIdentifier, $result);
         return $result;
     }
@@ -602,7 +621,7 @@ class PageRepository implements LoggerAwareInterface
      * @param array $page the page translation record or the page in the default language
      * @param LanguageAspect $languageAspect
      * @return bool true if the given page translation record is suited for the given language ID
-     * @internal only in use for HMENU generation for now
+     * @internal
      */
     public function isPageSuitableForLanguage(array $page, LanguageAspect $languageAspect): bool
     {
@@ -663,7 +682,10 @@ class PageRepository implements LoggerAwareInterface
             $orderedListByLanguages = array_flip($languageUids);
 
             $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('pages');
-            $queryBuilder->setRestrictions(GeneralUtility::makeInstance(FrontendRestrictionContainer::class));
+            $queryBuilder->setRestrictions(GeneralUtility::makeInstance(FrontendRestrictionContainer::class, $this->context));
+            if (empty($this->where_groupAccess)) {
+                $queryBuilder->getRestrictions()->removeByType(FrontendGroupRestriction::class);
+            }
             $result = $queryBuilder->select('*')
                 ->from('pages')
                 ->where(
@@ -746,7 +768,7 @@ class PageRepository implements LoggerAwareInterface
                     $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)
                         ->getQueryBuilderForTable($table);
                     $queryBuilder->setRestrictions(
-                        GeneralUtility::makeInstance(FrontendRestrictionContainer::class)
+                        GeneralUtility::makeInstance(FrontendRestrictionContainer::class, $this->context)
                     );
                     $olrow = $queryBuilder->select('*')
                         ->from($table)
@@ -828,7 +850,7 @@ class PageRepository implements LoggerAwareInterface
      * @param int|int[] $pageId The page id (or array of page ids) for which to fetch subpages (PID)
      * @param string $fields List of fields to select. Default is "*" = all
      * @param string $sortField The field to sort by. Default is "sorting
-     * @param string $additionalWhereClause Optional additional where clauses. Like "AND title like '%blabla%'" for instance.
+     * @param string $additionalWhereClause Optional additional where clauses. Like "AND title like '%some text%'" for instance.
      * @param bool $checkShortcuts Check if shortcuts exist, checks by default
      * @return array Array with key/value pairs; keys are page-uid numbers. values are the corresponding page records (with overlaid localized fields, if any)
      * @see self::getPageShortcut(), \TYPO3\CMS\Frontend\ContentObject\Menu\AbstractMenuContentObject::makeMenu()
@@ -847,7 +869,7 @@ class PageRepository implements LoggerAwareInterface
      * @param int[] $pageIds Array of page ids to fetch
      * @param string $fields List of fields to select. Default is "*" = all
      * @param string $sortField The field to sort by. Default is "sorting"
-     * @param string $additionalWhereClause Optional additional where clauses. Like "AND title like '%blabla%'" for instance.
+     * @param string $additionalWhereClause Optional additional where clauses. Like "AND title like '%some text%'" for instance.
      * @param bool $checkShortcuts Check if shortcuts exist, checks by default
      * @return array Array with key/value pairs; keys are page-uid numbers. values are the corresponding page records (with overlaid localized fields, if any)
      */
@@ -874,7 +896,7 @@ class PageRepository implements LoggerAwareInterface
      * point.
      *
      * The query can be customized by setting fields, sorting and additional WHERE clauses. If additional WHERE
-     * clauses are given, the clause must start with an operator, i.e: "AND title like '%blabla%'".
+     * clauses are given, the clause must start with an operator, i.e: "AND title like '%some text%'".
      *
      * The keys of the returned page records are the page UIDs.
      *
@@ -922,7 +944,7 @@ class PageRepository implements LoggerAwareInterface
         if (!empty($sortField)) {
             $orderBy = QueryHelper::parseOrderBy($sortField);
             foreach ($orderBy as $order) {
-                $res->orderBy(...$order);
+                $res->addOrderBy($order[0], $order[1] ?? 'ASC');
             }
         }
         $result = $res->execute();
@@ -1002,7 +1024,7 @@ class PageRepository implements LoggerAwareInterface
      * If shortcut, look up if the target exists and is currently visible
      *
      * @param array $page The page to check
-     * @param string $additionalWhereClause Optional additional where clauses. Like "AND title like '%blabla%'" for instance.
+     * @param string $additionalWhereClause Optional additional where clauses. Like "AND title like '%some text%'" for instance.
      * @return array
      */
     protected function checkValidShortcutOfPage(array $page, $additionalWhereClause)
@@ -1398,7 +1420,7 @@ class PageRepository implements LoggerAwareInterface
         $uid = (int)$uid;
         if (is_array($GLOBALS['TCA'][$table]) && $uid > 0) {
             $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($table);
-            $queryBuilder->setRestrictions(GeneralUtility::makeInstance(FrontendRestrictionContainer::class));
+            $queryBuilder->setRestrictions(GeneralUtility::makeInstance(FrontendRestrictionContainer::class, $this->context));
             $row = $queryBuilder->select('*')
                 ->from($table)
                 ->where($queryBuilder->expr()->eq('uid', $queryBuilder->createNamedParameter($uid, \PDO::PARAM_INT)))
@@ -1411,7 +1433,7 @@ class PageRepository implements LoggerAwareInterface
                     if ($checkPage) {
                         $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)
                             ->getQueryBuilderForTable('pages');
-                        $queryBuilder->setRestrictions(GeneralUtility::makeInstance(FrontendRestrictionContainer::class));
+                        $queryBuilder->setRestrictions(GeneralUtility::makeInstance(FrontendRestrictionContainer::class, $this->context));
                         $numRows = (int)$queryBuilder->count('*')
                             ->from('pages')
                             ->where(
@@ -1510,7 +1532,7 @@ class PageRepository implements LoggerAwareInterface
 
             if ($orderBy !== '') {
                 foreach (QueryHelper::parseOrderBy($orderBy) as $orderPair) {
-                    list($fieldName, $order) = $orderPair;
+                    [$fieldName, $order] = $orderPair;
                     $queryBuilder->addOrderBy($fieldName, $order);
                 }
             }
@@ -1623,13 +1645,19 @@ class PageRepository implements LoggerAwareInterface
                     }
                     if (($ctrl['enablecolumns']['starttime'] ?? false) && !($ignore_array['starttime'] ?? false)) {
                         $field = $table . '.' . $ctrl['enablecolumns']['starttime'];
-                        $constraints[] = $expressionBuilder->lte($field, (int)$GLOBALS['SIM_ACCESS_TIME']);
+                        $constraints[] = $expressionBuilder->lte(
+                            $field,
+                            $this->context->getPropertyFromAspect('date', 'accessTime', 0)
+                        );
                     }
                     if (($ctrl['enablecolumns']['endtime'] ?? false) && !($ignore_array['endtime'] ?? false)) {
                         $field = $table . '.' . $ctrl['enablecolumns']['endtime'];
                         $constraints[] = $expressionBuilder->orX(
                             $expressionBuilder->eq($field, 0),
-                            $expressionBuilder->gt($field, (int)$GLOBALS['SIM_ACCESS_TIME'])
+                            $expressionBuilder->gt(
+                                $field,
+                                $this->context->getPropertyFromAspect('date', 'accessTime', 0)
+                            )
                         );
                     }
                     if (($ctrl['enablecolumns']['fe_group'] ?? false) && !($ignore_array['fe_group'] ?? false)) {
@@ -1678,7 +1706,12 @@ class PageRepository implements LoggerAwareInterface
         /** @var UserAspect $userAspect */
         $userAspect = $this->context->getAspect('frontend.user');
         $memberGroups = $userAspect->getGroupIds();
-
+        $cache = $this->getRuntimeCache();
+        $cacheIdentifier = 'PageRepository_groupAccessWhere_' . md5($field . '_' . $table . '_' . implode('_', $memberGroups));
+        $cacheEntry = $cache->get($cacheIdentifier);
+        if ($cacheEntry) {
+            return $cacheEntry;
+        }
         $expressionBuilder = GeneralUtility::makeInstance(ConnectionPool::class)
             ->getQueryBuilderForTable($table)
             ->expr();
@@ -1693,7 +1726,9 @@ class PageRepository implements LoggerAwareInterface
             $orChecks[] = $expressionBuilder->inSet($field, $expressionBuilder->literal($value));
         }
 
-        return' AND (' . $expressionBuilder->orX(...$orChecks) . ')';
+        $accessGroupWhere = ' AND (' . $expressionBuilder->orX(...$orChecks) . ')';
+        $cache->set($cacheIdentifier, $accessGroupWhere);
+        return $accessGroupWhere;
     }
 
     /**********************
@@ -1907,7 +1942,8 @@ class PageRepository implements LoggerAwareInterface
             // Find pointed-to record.
             if ($moveID) {
                 $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($table);
-                $queryBuilder->setRestrictions(GeneralUtility::makeInstance(FrontendRestrictionContainer::class));
+                $queryBuilder->setRestrictions(GeneralUtility::makeInstance(FrontendRestrictionContainer::class, $this->context));
+                $queryBuilder->getRestrictions()->removeByType(HiddenRestriction::class);
                 $origRow = $queryBuilder->select(...array_keys($this->purgeComputedProperties($row)))
                     ->from($table)
                     ->where(
@@ -2021,7 +2057,7 @@ class PageRepository implements LoggerAwareInterface
             // If version found, check if it could have been selected with enableFields on
             // as well:
             $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($table);
-            $queryBuilder->setRestrictions(GeneralUtility::makeInstance(FrontendRestrictionContainer::class));
+            $queryBuilder->setRestrictions(GeneralUtility::makeInstance(FrontendRestrictionContainer::class, $this->context));
             // Remove the frontend workspace restriction because we are testing a version record
             $queryBuilder->getRestrictions()->removeByType(FrontendWorkspaceRestriction::class);
             $queryBuilder->select('uid')
@@ -2051,7 +2087,7 @@ class PageRepository implements LoggerAwareInterface
             // selected with full enable fields and if so, return 1:
             $queryBuilder->where(
                 $queryBuilder->expr()->eq('uid', $queryBuilder->createNamedParameter($uid, \PDO::PARAM_INT))
-                );
+            );
             if ($bypassEnableFieldsCheck || $queryBuilder->execute()->fetchColumn()) {
                 // Means search was done, but no version found.
                 return 1;

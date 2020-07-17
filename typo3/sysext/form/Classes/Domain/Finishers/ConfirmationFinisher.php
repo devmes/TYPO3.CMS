@@ -110,7 +110,7 @@ class ConfirmationFinisher extends AbstractFinisher
             }
             $this->contentObjectRenderer->start([$contentElementUid], '');
             $this->contentObjectRenderer->setCurrentVal((string)$contentElementUid);
-            $message = $this->contentObjectRenderer->cObjGetSingle($setup[$lastSegment], $setup[$lastSegment . '.']);
+            $message = $this->contentObjectRenderer->cObjGetSingle($setup[$lastSegment], $setup[$lastSegment . '.'], $lastSegment);
         } else {
             $message = $this->parseOption('message');
         }
@@ -119,7 +119,10 @@ class ConfirmationFinisher extends AbstractFinisher
             $this->finisherContext->getFormRuntime()
         );
 
-        $standaloneView->assign('message', $message);
+        $standaloneView->assignMultiple([
+            'message' => $message,
+            'isPreparedMessage' => !empty($contentElementUid),
+        ]);
 
         return $standaloneView->render();
     }

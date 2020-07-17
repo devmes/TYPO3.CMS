@@ -15,22 +15,28 @@ namespace TYPO3\CMS\Fluid\ViewHelpers\Link;
  */
 
 use TYPO3\CMS\Core\Utility\GeneralUtility;
-use TYPO3\CMS\Fluid\Core\ViewHelper\Exception;
 use TYPO3\CMS\Frontend\ContentObject\ContentObjectRenderer;
 use TYPO3\CMS\Frontend\Service\TypoLinkCodecService;
 use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
 use TYPO3Fluid\Fluid\Core\ViewHelper\AbstractViewHelper;
+use TYPO3Fluid\Fluid\Core\ViewHelper\Exception;
 use TYPO3Fluid\Fluid\Core\ViewHelper\Traits\CompileWithRenderStatic;
 
 /**
  * A ViewHelper to create links from fields supported by the link wizard
  *
  * Example
- * -------
+ * =======
  *
- * {link} contains "19 _blank - "testtitle with whitespace" &X=y"
+ * ``{link}`` contains: ``t3://page?uid=2&arg1=val1#9 _blank some-css-class "Title containing Whitespace"``.
  *
- * minimal usage::
+ * Or a legacy version from older TYPO3 versions:
+ * ``{link}`` contains: ``9 _blank - "testtitle with whitespace" &X=y``.
+ *
+ * Minimal usage
+ * -------------
+ *
+ * ::
  *
  *    <f:link.typolink parameter="{link}">
  *       Linktext
@@ -38,21 +44,33 @@ use TYPO3Fluid\Fluid\Core\ViewHelper\Traits\CompileWithRenderStatic;
  *
  * Output::
  *
- *    <a href="index.php?id=19&X=y" title="testtitle with whitespace" target="_blank">
+ *    <a href="/page/path/name.html?X=y" title="testtitle with whitespace" target="_blank">
  *       Linktext
  *    </a>
  *
- * Full parameter usage::
+ * Depending on current page, routing and page path configuration.
  *
- *    <f:link.typolink parameter="{link}" target="_blank" class="ico-class" title="some title" additionalParams="&u=b" additionalAttributes="{type:'button'}" useCacheHash="true">
+ * Full parameter usage
+ * --------------------
+ *
+ * ::
+ *
+ *    <f:link.typolink parameter="{link}" additionalParams="&u=b"
+ *        target="_blank"
+ *        class="ico-class" title="some title"
+ *        additionalAttributes="{type:'button'}"
+ *        useCacheHash="true"
+ *    >
  *       Linktext
  *    </f:link.typolink>
  *
  * Output::
  *
- *    <a href="index.php?id=19&X=y&u=b" title="some title" target="_blank" class="ico-class" type="button">
- *      Linktext
+ *    <a href="/page/path/name.html?X=y&u=b" title="some title" target="_blank" class="ico-class" type="button">
+ *        Linktext
  *    </a>
+ *
+ * Depending on routing and page path configuration.
  */
 class TypolinkViewHelper extends AbstractViewHelper
 {

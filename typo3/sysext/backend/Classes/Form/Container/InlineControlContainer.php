@@ -119,7 +119,7 @@ class InlineControlContainer extends AbstractContainer
 
         $config = $parameterArray['fieldConf']['config'];
         $foreign_table = $config['foreign_table'];
-
+        $isReadOnly = isset($config['readOnly']) && $config['readOnly'];
         $language = 0;
         $languageFieldName = $GLOBALS['TCA'][$table]['ctrl']['languageField'];
         if (BackendUtility::isTableLocalizable($table)) {
@@ -176,6 +176,7 @@ class InlineControlContainer extends AbstractContainer
             'table' => $foreign_table,
             'md5' => md5($nameObject)
         ];
+        $configJson = json_encode($config);
         $this->inlineData['config'][$nameObject . '-' . $foreign_table] = [
             'min' => $config['minitems'],
             'max' => $config['maxitems'],
@@ -185,8 +186,8 @@ class InlineControlContainer extends AbstractContainer
                 'uid' => $top['uid']
             ],
             'context' => [
-                'config' => $config,
-                'hmac' => GeneralUtility::hmac(json_encode($config), 'InlineContext'),
+                'config' => $configJson,
+                'hmac' => GeneralUtility::hmac($configJson, 'InlineContext'),
             ],
         ];
         $this->inlineData['nested'][$nameObject] = $this->data['tabAndInlineStack'];
@@ -275,7 +276,7 @@ class InlineControlContainer extends AbstractContainer
         }
 
         // Define how to show the "Create new record" link - if there are more than maxitems, hide it
-        if ($numberOfFullLocalizedChildren >= $config['maxitems'] || $uniqueMax > 0 && $numberOfFullLocalizedChildren >= $uniqueMax) {
+        if ($isReadOnly || $numberOfFullLocalizedChildren >= $config['maxitems'] || ($uniqueMax > 0 && $numberOfFullLocalizedChildren >= $uniqueMax)) {
             $config['inline']['inlineNewButtonStyle'] = 'display: none;';
             $config['inline']['inlineNewRelationButtonStyle'] = 'display: none;';
             $config['inline']['inlineOnlineMediaAddButtonStyle'] = 'display: none;';
@@ -299,7 +300,7 @@ class InlineControlContainer extends AbstractContainer
         }
 
         // If it's required to select from possible child records (reusable children), add a selector box
-        if ($config['foreign_selector'] && $config['appearance']['showPossibleRecordsSelector'] !== false) {
+        if (!$isReadOnly && $config['foreign_selector'] && $config['appearance']['showPossibleRecordsSelector'] !== false) {
             if ($config['selectorOrUniqueConfiguration']['config']['type'] === 'select') {
                 $selectorBox = $this->renderPossibleRecordsSelectorTypeSelect($config, $uniqueIds);
             } else {
@@ -339,7 +340,7 @@ class InlineControlContainer extends AbstractContainer
         $html .= $fieldWizardHtml;
 
         // Add the level links after all child records:
-        if ($config['appearance']['levelLinksPosition'] === 'both' || $config['appearance']['levelLinksPosition'] === 'bottom') {
+        if (!$isReadOnly && ($config['appearance']['levelLinksPosition'] === 'both' || $config['appearance']['levelLinksPosition'] === 'bottom')) {
             $html .= $levelLinks . $localizationLinks;
         }
         if (is_array($config['customControls'])) {
@@ -497,6 +498,8 @@ class InlineControlContainer extends AbstractContainer
                 $elementBrowserEnabled = (bool)$inlineConfiguration['appearance']['elementBrowserEnabled'];
             }
         }
+        // Remove any white-spaces from the allowed extension lists
+        $allowed = implode(',', GeneralUtility::trimExplode(',', $allowed, true));
         $browserParams = '|||' . $allowed . '|' . $objectPrefix . '|inline.checkUniqueElement||inline.importElement';
         $onClick = 'setFormValueOpenBrowser(' . GeneralUtility::quoteJSvalue($mode) . ', ' . GeneralUtility::quoteJSvalue($browserParams) . '); return false;';
 
@@ -522,7 +525,7 @@ class InlineControlContainer extends AbstractContainer
         }
         if ($showUpload && $isDirectFileUploadEnabled) {
             $folder = $backendUser->getDefaultUploadFolder(
-                $this->data['parentPageRow']['uid'],
+                $this->data['tableName'] === 'pages' ? $this->data['vanillaUid'] : $this->data['parentPageRow']['uid'],
                 $this->data['tableName'],
                 $this->data['fieldName']
             );
@@ -574,7 +577,8 @@ class InlineControlContainer extends AbstractContainer
 
         $item = '<div class="form-control-wrap">' . $item . '</div>';
         $allowedList = '';
-        $allowedLabel = htmlspecialchars($languageService->sL('LLL:EXT:core/Resources/Private/Language/locallang_core.xlf:cm.allowedFileExtensions'));
+        $allowedLabelKey = ($mode === 'file') ? 'allowedFileExtensions' : 'allowedRelations';
+        $allowedLabel = htmlspecialchars($languageService->sL('LLL:EXT:core/Resources/Private/Language/locallang_core.xlf:cm.' . $allowedLabelKey));
         foreach ($allowedArray as $allowedItem) {
             $allowedList .= '<span class="label label-success">' . strtoupper($allowedItem) . '</span> ';
         }

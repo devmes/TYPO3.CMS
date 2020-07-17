@@ -129,10 +129,10 @@ class RedisSessionBackend implements SessionBackendInterface, LoggerAwareInterfa
         $rawData = $this->redis->get($key);
 
         if ($rawData !== false) {
-            return json_decode(
-                $rawData,
-                true
-            );
+            $decodedValue = json_decode($rawData, true);
+            if (is_array($decodedValue)) {
+                return $decodedValue;
+            }
         }
         throw new SessionNotFoundException('Session could not be fetched from redis', 1481885583);
     }
@@ -148,7 +148,7 @@ class RedisSessionBackend implements SessionBackendInterface, LoggerAwareInterfa
     {
         $this->initializeConnection();
 
-        return $this->redis->delete($this->getSessionKeyName($sessionId)) >= 1;
+        return $this->redis->del($this->getSessionKeyName($sessionId)) >= 1;
     }
 
     /**
@@ -170,9 +170,10 @@ class RedisSessionBackend implements SessionBackendInterface, LoggerAwareInterfa
         $key = $this->getSessionKeyName($sessionId);
 
         // nx will not allow overwriting existing keys
-        $wasSet = $this->redis->set(
+        $jsonString = json_encode($sessionData);
+        $wasSet = is_string($jsonString) && $this->redis->set(
             $key,
-            json_encode($sessionData),
+            $jsonString,
             ['nx']
         );
 
@@ -204,7 +205,8 @@ class RedisSessionBackend implements SessionBackendInterface, LoggerAwareInterfa
         $sessionData['ses_tstamp'] = $GLOBALS['EXEC_TIME'] ?? time();
 
         $key = $this->getSessionKeyName($sessionId);
-        $wasSet = $this->redis->set($key, json_encode($sessionData));
+        $jsonString = json_encode($sessionData);
+        $wasSet = is_string($jsonString) && $this->redis->set($key, $jsonString);
 
         if (!$wasSet) {
             throw new SessionNotUpdatedException('Session could not be updated in Redis', 1481896383);
@@ -224,11 +226,11 @@ class RedisSessionBackend implements SessionBackendInterface, LoggerAwareInterfa
         foreach ($this->getAll() as $sessionRecord) {
             if ($sessionRecord['ses_anonymous']) {
                 if ($maximumAnonymousLifetime > 0 && ($sessionRecord['ses_tstamp'] + $maximumAnonymousLifetime) < $GLOBALS['EXEC_TIME']) {
-                    $this->redis->delete($this->getSessionKeyName($sessionRecord['ses_id']));
+                    $this->redis->del($this->getSessionKeyName($sessionRecord['ses_id']));
                 }
             } else {
                 if (($sessionRecord['ses_tstamp'] + $maximumLifetime) < $GLOBALS['EXEC_TIME']) {
-                    $this->redis->delete($this->getSessionKeyName($sessionRecord['ses_id']));
+                    $this->redis->del($this->getSessionKeyName($sessionRecord['ses_id']));
                 }
             }
         }
@@ -248,7 +250,9 @@ class RedisSessionBackend implements SessionBackendInterface, LoggerAwareInterfa
         try {
             $this->connected = $this->redis->pconnect(
                 $this->configuration['hostname'] ?? '127.0.0.1',
-                $this->configuration['port'] ?? 6379
+                $this->configuration['port'] ?? 6379,
+                0.0,
+                $this->identifier
             );
         } catch (\RedisException $e) {
             $this->logger->alert('Could not connect to redis server.', ['exception' => $e]);
@@ -303,7 +307,7 @@ class RedisSessionBackend implements SessionBackendInterface, LoggerAwareInterfa
             }
         }
 
-        $encodedSessions = $this->redis->getMultiple($keys);
+        $encodedSessions = $this->redis->mGet($keys);
         if (!is_array($encodedSessions)) {
             return [];
         }

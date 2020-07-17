@@ -625,7 +625,7 @@ abstract class AbstractTreeView
     public function initializePositionSaving()
     {
         // Get stored tree structure:
-        $this->stored = unserialize($this->BE_USER->uc['browseTrees'][$this->treeName]);
+        $this->stored = unserialize($this->BE_USER->uc['browseTrees'][$this->treeName], ['allowed_classes' => false]);
         // PM action
         // (If an plus/minus icon has been clicked, the PM GET var is sent and we
         // must update the stored positions in the tree):
@@ -768,8 +768,7 @@ abstract class AbstractTreeView
         $idH = [];
         // Traverse the records:
         while ($crazyRecursionLimiter > 0 && ($row = $this->getDataNext($res))) {
-            $pageUid = ($this->table === 'pages') ? $row['uid'] : $row['pid'];
-            if (!$this->getBackendUser()->isInWebMount($pageUid)) {
+            if (!$this->getBackendUser()->isInWebMount($this->table === 'pages' ? $row : $row['pid'])) {
                 // Current record is not within web mount => skip it
                 continue;
             }

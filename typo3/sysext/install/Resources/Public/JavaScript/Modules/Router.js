@@ -42,7 +42,7 @@ define([
         self.login();
       });
       $(document).on('keydown', '#t3-install-form-password', function(e) {
-        if (e.keyCode === 13) {
+        if (e.key === 'Enter') {
           e.preventDefault();
           $('.t3js-login-login').click();
         }
@@ -64,28 +64,31 @@ define([
         } else {
           var modalTitle = $me.closest('.card').find('.card-title').html();
           var modalSize = $me.data('modalSize') || Modal.sizes.large;
-
+          var $modal = Modal.advanced({
+            type: Modal.types.default,
+            title: modalTitle,
+            size: modalSize,
+            content: $('<div class="modal-loading">'),
+            additionalCssClasses: ['install-tool-modal'],
+            callback: function (currentModal) {
+              require([requireModule], function (aModule) {
+                if (typeof aModule.initialize !== 'undefined') {
+                  aModule.initialize(currentModal);
+                }
+              });
+            }
+          });
           Icons.getIcon('spinner-circle', Icons.sizes.default, null, null, Icons.markupIdentifiers.inline).done(function(icon) {
-            var configuration = {
-              type: Modal.types.default,
-              title: modalTitle,
-              size: modalSize,
-              content: $('<div class="modal-loading">').append(icon),
-              additionalCssClasses: ['install-tool-modal'],
-              callback: function (currentModal) {
-                require([requireModule], function (aModule) {
-                  if (typeof aModule.initialize !== 'undefined') {
-                    aModule.initialize(currentModal);
-                  }
-                });
-              }
-            };
-            Modal.advanced(configuration);
+            $modal.find('.modal-loading').append(icon);
           });
         }
       });
 
-      this.executeSilentConfigurationUpdate();
+      if ($(this.selectorBody).data('context') === 'backend') {
+        this.executeSilentConfigurationUpdate();
+      } else {
+        this.preAccessCheck();
+      }
     },
 
     registerInstallToolRoutes: function() {
@@ -114,6 +117,27 @@ define([
         url = url + '&install[action]=' + action;
       }
       return url;
+    },
+
+    preAccessCheck: function() {
+      this.updateLoadingInfo("Execute pre access check");
+      var self = this;
+      $.ajax({
+        url: this.getUrl("preAccessCheck", "layout"),
+        cache: false,
+        success: function(data) {
+          if (data.installToolLocked) {
+            self.checkEnableInstallToolFile();
+          } else if (!data.isAuthorized) {
+            self.showLogin();
+          } else {
+            self.executeSilentConfigurationUpdate();
+          }
+        },
+        error: function(xhr) {
+          self.handleAjaxError(xhr);
+        }
+      })
     },
 
     executeSilentConfigurationUpdate: function() {

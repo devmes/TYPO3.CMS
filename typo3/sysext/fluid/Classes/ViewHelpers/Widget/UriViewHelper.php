@@ -19,17 +19,18 @@ use TYPO3Fluid\Fluid\Core\ViewHelper\AbstractViewHelper;
 use TYPO3Fluid\Fluid\Core\ViewHelper\Traits\CompileWithRenderStatic;
 
 /**
- * A view helper for creating URIs to extbase actions within widgets.
+ * A ViewHelper for creating URIs to Extbase actions within widgets.
  *
  * Examples
- * --------
+ * ========
  *
  * URI to the show-action of the current controller::
  *
  *    <f:widget.uri action="show" />
  *
- * ``index.php?id=123&tx_myextension_plugin[widgetIdentifier][action]=show&tx_myextension_plugin[widgetIdentifier][controller]=Standard&cHash=xyz``
- * (depending on the current page, widget and your TS configuration)
+ * ``/page/path/name.html?tx_myextension_plugin[widgetIdentifier][action]=show&tx_myextension_plugin[widgetIdentifier][controller]=Standard&cHash=xyz``
+ *
+ * Depending on current page, routing and page path configuration.
  */
 class UriViewHelper extends AbstractViewHelper
 {

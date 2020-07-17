@@ -22,6 +22,7 @@ use TYPO3\CMS\Core\Cache\CacheManager;
 use TYPO3\CMS\Core\Imaging\Icon;
 use TYPO3\CMS\Core\Imaging\IconFactory;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Core\Versioning\VersionState;
 use TYPO3\CMS\Extbase\Object\ObjectManager;
 use TYPO3\CMS\Extbase\SignalSlot\Dispatcher;
 use TYPO3\CMS\Workspaces\Domain\Model\CombinedRecord;
@@ -77,11 +78,6 @@ class GridDataService implements LoggerAwareInterface
      * @var \TYPO3\CMS\Core\Cache\Frontend\FrontendInterface
      */
     protected $workspacesCache;
-
-    /**
-     * @var array
-     */
-    protected $systemLanguages;
 
     /**
      * @var IntegrityService
@@ -158,6 +154,7 @@ class GridDataService implements LoggerAwareInterface
                     }
 
                     $isDeletedPage = $table === 'pages' && $recordState === 'deleted';
+                    $pageId = $table === 'pages' ? $record['uid'] : $record['pid'];
                     $viewUrl = GeneralUtility::makeInstance(PreviewUriBuilder::class)->buildUriForElement($table, $record['uid'], $origRecord, $versionRecord);
                     $versionArray = [];
                     $versionArray['table'] = $table;
@@ -175,7 +172,8 @@ class GridDataService implements LoggerAwareInterface
                     $versionArray['label_prevStage'] = htmlspecialchars($stagesObj->getStageTitle($tempStage['uid']));
                     $versionArray['value_prevStage'] = (int)$tempStage['uid'];
                     $versionArray['path_Live'] = htmlspecialchars(BackendUtility::getRecordPath($record['livepid'], '', 999));
-                    $versionArray['path_Workspace'] = htmlspecialchars(BackendUtility::getRecordPath($record['wspid'], '', 999));
+                    // no htmlspecialchars necessary as this is only used in JS via text function
+                    $versionArray['path_Workspace'] = BackendUtility::getRecordPath($record['wspid'], '', 999);
                     $versionArray['workspace_Title'] = htmlspecialchars(WorkspaceService::getWorkspaceTitle($versionRecord['t3ver_wsid']));
                     $versionArray['workspace_Tstamp'] = $versionRecord['tstamp'];
                     $versionArray['workspace_Formated_Tstamp'] = BackendUtility::datetime($versionRecord['tstamp']);
@@ -188,7 +186,7 @@ class GridDataService implements LoggerAwareInterface
                     $languageValue = $this->getLanguageValue($table, $versionRecord);
                     $versionArray['languageValue'] = $languageValue;
                     $versionArray['language'] = [
-                        'icon' => $iconFactory->getIcon($this->getSystemLanguageValue($languageValue, 'flagIcon'), Icon::SIZE_SMALL)->render()
+                        'icon' => $iconFactory->getIcon($this->getSystemLanguageValue($languageValue, $pageId, 'flagIcon'), Icon::SIZE_SMALL)->render()
                     ];
                     $versionArray['allowedAction_nextStage'] = $isRecordTypeAllowedToModify && $stagesObj->isNextStageAllowedForUser($versionRecord['t3ver_stage']);
                     $versionArray['allowedAction_prevStage'] = $isRecordTypeAllowedToModify && $stagesObj->isPrevStageAllowedForUser($versionRecord['t3ver_stage']);
@@ -476,25 +474,36 @@ class GridDataService implements LoggerAwareInterface
     protected function isFilterTextInVisibleColumns($filterText, array $versionArray)
     {
         if (is_array($GLOBALS['BE_USER']->uc['moduleData']['Workspaces'][$GLOBALS['BE_USER']->workspace]['columns'])) {
-            foreach ($GLOBALS['BE_USER']->uc['moduleData']['Workspaces'][$GLOBALS['BE_USER']->workspace]['columns'] as $column => $value) {
-                if (isset($value['hidden']) && isset($column) && isset($versionArray[$column])) {
-                    if ($value['hidden'] == 0) {
-                        switch ($column) {
-                            case 'workspace_Tstamp':
-                                if (stripos($versionArray['workspace_Formated_Tstamp'], $filterText) !== false) {
-                                    return true;
-                                }
-                                break;
-                            case 'change':
-                                if (stripos(strval($versionArray[$column]), str_replace('%', '', $filterText)) !== false) {
-                                    return true;
-                                }
-                                break;
-                            default:
-                                if (stripos(strval($versionArray[$column]), $filterText) !== false) {
-                                    return true;
-                                }
-                        }
+            $visibleColumns = $GLOBALS['BE_USER']->uc['moduleData']['Workspaces'][$GLOBALS['BE_USER']->workspace]['columns'];
+        } else {
+            $visibleColumns = [
+                'workspace_Formated_Tstamp' => ['hidden' => 0],
+                'change' => ['hidden' => 0],
+                'path_Workspace' => ['hidden' => 0],
+                'path_Live' => ['hidden' => 0],
+                'label_Live' => ['hidden' => 0],
+                'label_Stage' => ['hidden' => 0],
+                'label_Workspace' => ['hidden' => 0],
+            ];
+        }
+        foreach ($visibleColumns as $column => $value) {
+            if (isset($value['hidden']) && isset($column) && isset($versionArray[$column])) {
+                if ($value['hidden'] == 0) {
+                    switch ($column) {
+                        case 'workspace_Tstamp':
+                            if (stripos($versionArray['workspace_Formated_Tstamp'], $filterText) !== false) {
+                                return true;
+                            }
+                            break;
+                        case 'change':
+                            if (stripos(strval($versionArray[$column]), str_replace('%', '', $filterText)) !== false) {
+                                return true;
+                            }
+                            break;
+                        default:
+                            if (stripos(strval($versionArray[$column]), $filterText) !== false) {
+                                return true;
+                            }
                     }
                 }
             }
@@ -519,13 +528,13 @@ class GridDataService implements LoggerAwareInterface
             $hiddenState = 'unhidden';
         }
         switch ($stateId) {
-            case -1:
+            case VersionState::NEW_PLACEHOLDER_VERSION:
                 $state = 'new';
                 break;
-            case 2:
+            case VersionState::DELETE_PLACEHOLDER:
                 $state = 'deleted';
                 break;
-            case 4:
+            case VersionState::MOVE_POINTER:
                 $state = 'moved';
                 break;
             default:
@@ -576,14 +585,15 @@ class GridDataService implements LoggerAwareInterface
      * Gets a named value of the available sys_language elements.
      *
      * @param int $id sys_language uid
+     * @param int $pageId page id of a site
      * @param string $key Name of the value to be fetched (e.g. title)
      * @return string|null
      * @see getSystemLanguages
      */
-    protected function getSystemLanguageValue($id, $key)
+    protected function getSystemLanguageValue($id, $pageId, $key)
     {
         $value = null;
-        $systemLanguages = $this->getSystemLanguages();
+        $systemLanguages = $this->getSystemLanguages((int)$pageId);
         if (!empty($systemLanguages[$id][$key])) {
             $value = $systemLanguages[$id][$key];
         }
@@ -593,15 +603,12 @@ class GridDataService implements LoggerAwareInterface
     /**
      * Gets all available system languages.
      *
+     * @param int $pageId
      * @return array
      */
-    public function getSystemLanguages()
+    public function getSystemLanguages(int $pageId)
     {
-        if (!isset($this->systemLanguages)) {
-            $translateTools = GeneralUtility::makeInstance(TranslationConfigurationProvider::class);
-            $this->systemLanguages = $translateTools->getSystemLanguages();
-        }
-        return $this->systemLanguages;
+        return GeneralUtility::makeInstance(TranslationConfigurationProvider::class)->getSystemLanguages($pageId);
     }
 
     /**

@@ -19,19 +19,25 @@ use TYPO3Fluid\Fluid\Core\ViewHelper\AbstractViewHelper;
 use TYPO3Fluid\Fluid\Core\ViewHelper\Traits\CompileWithRenderStatic;
 
 /**
- * A view helper for creating URIs to external targets.
+ * A ViewHelper for creating URIs to external targets.
  * Currently the specified URI is simply passed through.
  *
  * Examples
- * --------
+ * ========
  *
- * Default::
+ * Default
+ * -------
+ *
+ * ::
  *
  *    <f:uri.external uri="http://www.typo3.org" />
  *
  * ``http://www.typo3.org``
  *
- * custom default scheme::
+ * Custom default scheme
+ * ---------------------
+ *
+ * ::
  *
  *    <f:uri.external uri="typo3.org" defaultScheme="ftp" />
  *

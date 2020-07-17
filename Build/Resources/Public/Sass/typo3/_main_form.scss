@@ -201,6 +201,7 @@ select {
         }
 
         &[size="1"],
+        &:not([multiple][size]),
         &:not([size]) {
             appearance: none;
 
@@ -371,6 +372,11 @@ select {
 
     > .form-wizards-items-bottom {
         display: table-row;
+
+        .tablelist-item-nolink {
+            padding: 6px;
+            display: inline-block;
+        }
     }
 
     > .form-wizards-items-bottom:first-child {

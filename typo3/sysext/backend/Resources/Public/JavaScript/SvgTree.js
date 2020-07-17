@@ -47,6 +47,7 @@ define(
         validation: {
           maxItems: Number.MAX_VALUE
         },
+        defaultProperties: {},
         unselectableElements: [],
         expandUpToLevel: null,
         readOnlyMode: false,
@@ -260,7 +261,7 @@ define(
        * Set svg wrapper height
        */
       setWrapperHeight: function() {
-        var treeWrapperHeight = ($('#typo3-pagetree').height() - $('#svg-toolbar').height());
+        var treeWrapperHeight = ($('body').height() - $('#svg-toolbar').outerHeight() - $('.scaffold-topbar').height());
         $('#typo3-pagetree-tree').height(treeWrapperHeight);
       },
 
@@ -330,6 +331,9 @@ define(
 
         nodes = nodes || this.nodes;
         nodes = nodes.map(function(node, index) {
+          if (typeof node.command === 'undefined') {
+            node = $.extend({}, _this.settings.defaultProperties, node);
+          }
           node.expanded = (_this.settings.expandUpToLevel !== null) ? node.depth < _this.settings.expandUpToLevel : Boolean(node.expanded);
           node.parents = [];
           node.parentsStateIdentifier = [];
@@ -467,11 +471,6 @@ define(
           };
           Icons.getIcon(iconName, Icons.sizes.small, null, null, 'inline').done(function(icon) {
             var result = icon.match(/<svg[\s\S]*<\/svg>/i);
-
-            // Check if the icon is from the Bitmap Icon Provider (see PHP class for the inline rendering)
-            if (!result) {
-              result = icon.match(/<image[\s\S]*\/>/i);
-            }
 
             if (result) {
               _this.data.icons[iconName].icon = result[0];

@@ -19,12 +19,14 @@ use TYPO3Fluid\Fluid\Core\Parser\SyntaxTree\ViewHelperNode;
 use TYPO3Fluid\Fluid\Core\ViewHelper\AbstractTagBasedViewHelper;
 
 /**
- * View helper which returns a select box, that can be used to switch between
+ * ViewHelper which returns a select box, that can be used to switch between
  * multiple actions and controllers and looks similar to TYPO3s funcMenu.
- * Note: This view helper is experimental!
+ *
+ * .. note::
+ *    This ViewHelper is experimental!
  *
  * Examples
- * --------
+ * ========
  *
  * Simple::
  *
@@ -34,7 +36,7 @@ use TYPO3Fluid\Fluid\Core\ViewHelper\AbstractTagBasedViewHelper;
  *       <f:be.menus.actionMenuItem label="List Posts" controller="Post" action="index" arguments="{blog: blog}" />
  *    </f:be.menus.actionMenu>
  *
- * Selectbox with the options "Overview", "Create new Blog" and "List Posts"
+ * Selectbox with the options "Overview", "Create new Blog" and "List Posts".
  *
  * Localized::
  *
@@ -43,7 +45,7 @@ use TYPO3Fluid\Fluid\Core\ViewHelper\AbstractTagBasedViewHelper;
  *       <f:be.menus.actionMenuItem label="{f:translate(key:'create_blog')}" controller="Blog" action="new" />
  *    </f:be.menus.actionMenu>
  *
- * localized selectbox
+ * Localized selectbox.
  */
 class ActionMenuViewHelper extends AbstractTagBasedViewHelper
 {

@@ -22,6 +22,7 @@ use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use TYPO3\CMS\Core\Http\HtmlResponse;
 use TYPO3\CMS\Core\Http\RequestFactory;
+use TYPO3\CMS\Core\Http\Response;
 use TYPO3\CMS\Core\LinkHandling\LinkService;
 use TYPO3\CMS\Core\Resource\File;
 use TYPO3\CMS\Core\Routing\InvalidRouteArgumentsException;
@@ -47,23 +48,49 @@ class StaticRouteResolver implements MiddlewareInterface
             ($configuration = $site->getConfiguration()['routes'] ?? null)
         ) {
             $path = ltrim($request->getUri()->getPath(), '/');
-            $routeNames = array_map(function (string $route) use ($site) {
-                return ltrim(trim($site->getBase()->getPath(), '/') . '/' . ltrim($route, '/'), '/');
-            }, array_column($configuration, 'route'));
-            if (in_array($path, $routeNames, true)) {
-                $key = array_search($path, $routeNames, true);
-                $routeConfig = $configuration[$key];
+            $routeConfig = $this->getApplicableStaticRoute($configuration, $site, $path);
+            if (is_array($routeConfig)) {
                 try {
                     [$content, $contentType] = $this->resolveByType($request, $site, $routeConfig['type'], $routeConfig);
                 } catch (InvalidRouteArgumentsException $e) {
-                    $content = 'Invalid route';
-                    $contentType = 'text/plain';
+                    return new Response('Invalid route', 404, ['Content-Type' => 'text/plain']);
                 }
 
                 return new HtmlResponse($content, 200, ['Content-Type' => $contentType]);
             }
         }
         return $handler->handle($request);
+    }
+
+    /**
+     * Find the proper configuration for the static route in the static route configuration. Mainly:
+     * - needs to have a valid "route" property
+     * - needs to have a "type"
+     *
+     * @param array $staticRouteConfiguration the "routes" part of the site configuration
+     * @param Site $site the current site where the configuration is based on
+     * @param string $uriPath the path of the current request - used to match the "route" value of a single static route
+     * @return array|null the configuration for the static route that matches, or null if no route is given
+     */
+    protected function getApplicableStaticRoute(array $staticRouteConfiguration, Site $site, string $uriPath): ?array
+    {
+        $routeNames = array_map(function (?string $route) use ($site) {
+            if ($route === null || $route === '') {
+                return null;
+            }
+            return ltrim(trim($site->getBase()->getPath(), '/') . '/' . ltrim($route, '/'), '/');
+        }, array_column($staticRouteConfiguration, 'route'));
+        // Remove empty routes which would throw an error (could happen within creating a false route in the GUI)
+        $routeNames = array_filter($routeNames);
+
+        if (in_array($uriPath, $routeNames, true)) {
+            $key = array_search($uriPath, $routeNames, true);
+            // Only allow routes with a type "given"
+            if (isset($staticRouteConfiguration[$key]['type'])) {
+                return $staticRouteConfiguration[$key];
+            }
+        }
+        return null;
     }
 
     /**
@@ -104,9 +131,16 @@ class StaticRouteResolver implements MiddlewareInterface
      */
     protected function getPageUri(ServerRequestInterface $request, Site $site, array $urlParams): string
     {
+        $parameters = [];
+        // Add additional parameters, if set via TypoLink
+        if (isset($urlParams['parameters'])) {
+            parse_str($urlParams['parameters'], $parameters);
+        }
+        $parameters['type'] = $urlParams['pagetype'] ?? 0;
+        $parameters['_language'] = $request->getAttribute('language', null);
         $uri = $site->getRouter()->generateUri(
             (int)$urlParams['pageuid'],
-            ['type' => $urlParams['pagetype'] ?? 0, '_language' => $request->getAttribute('language', null)],
+            $parameters,
             '',
             RouterInterface::ABSOLUTE_URL
         );

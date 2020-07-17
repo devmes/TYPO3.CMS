@@ -21,21 +21,26 @@ use TYPO3Fluid\Fluid\Core\ViewHelper\AbstractViewHelper;
 use TYPO3Fluid\Fluid\Core\ViewHelper\Traits\CompileWithRenderStatic;
 
 /**
- * View helper which renders the flash messages (if there are any) as an unsorted list.
+ * ViewHelper which renders the flash messages (if there are any) as an unsorted list.
  *
  * In case you need custom Flash Message HTML output, please write your own ViewHelper for the moment.
  *
- *
  * Examples
- * --------
+ * ========
  *
- * Simple::
+ * Simple
+ * ------
+ *
+ * ::
  *
  *    <f:flashMessages />
  *
  * A list of flash messages.
  *
- * TYPO3 core style::
+ * TYPO3 core style
+ * ----------------
+ *
+ * ::
  *
  *    <f:flashMessages />
  *
@@ -58,7 +63,10 @@ use TYPO3Fluid\Fluid\Core\ViewHelper\Traits\CompileWithRenderStatic;
  *       </div>
  *    </div>
  *
- * Output flash messages as a description list::
+ * Output flash messages as a description list
+ * -------------------------------------------
+ *
+ * ::
  *
  *    <f:flashMessages as="flashMessages">
  *       <dl class="messages">
@@ -76,7 +84,10 @@ use TYPO3Fluid\Fluid\Core\ViewHelper\Traits\CompileWithRenderStatic;
  *       <dd>Some Warning Message.</dd>
  *   </dl>
  *
- * Using a specific queue::
+ * Using a specific queue
+ * ----------------------
+ *
+ * ::
  *
  *    <f:flashMessages queueIdentifier="myQueue" />
  */

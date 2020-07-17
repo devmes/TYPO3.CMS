@@ -28,12 +28,14 @@ use TYPO3\CMS\Core\Http\RequestFactory;
 use TYPO3\CMS\Core\Package\Package;
 use TYPO3\CMS\Core\Package\PackageManager;
 use TYPO3\CMS\Core\Tests\Unit\Utility\AccessibleProxies\ExtensionManagementUtilityAccessibleProxy;
+use TYPO3\CMS\Core\Tests\Unit\Utility\Fixtures\ExtendedSingletonClassFixture;
 use TYPO3\CMS\Core\Tests\Unit\Utility\Fixtures\GeneralUtilityFilesystemFixture;
 use TYPO3\CMS\Core\Tests\Unit\Utility\Fixtures\GeneralUtilityFixture;
 use TYPO3\CMS\Core\Tests\Unit\Utility\Fixtures\GeneralUtilityMakeInstanceInjectLoggerFixture;
 use TYPO3\CMS\Core\Tests\Unit\Utility\Fixtures\OriginalClassFixture;
 use TYPO3\CMS\Core\Tests\Unit\Utility\Fixtures\OtherReplacementClassFixture;
 use TYPO3\CMS\Core\Tests\Unit\Utility\Fixtures\ReplacementClassFixture;
+use TYPO3\CMS\Core\Tests\Unit\Utility\Fixtures\SingletonClassFixture;
 use TYPO3\CMS\Core\Tests\Unit\Utility\Fixtures\TwoParametersConstructorFixture;
 use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
@@ -857,11 +859,11 @@ class GeneralUtilityTest extends UnitTestCase
                 ''
             ],
             'number without operator returns array with plus and number' => [
-                [['+', 42]],
+                [['+', '42']],
                 '42'
             ],
             'two numbers with asterisk return first number with plus and second number with asterisk' => [
-                [['+', 42], ['*', 31]],
+                [['+', '42'], ['*', '31']],
                 '42 * 31'
             ]
         ];
@@ -871,9 +873,9 @@ class GeneralUtilityTest extends UnitTestCase
      * @test
      * @dataProvider splitCalcDataProvider
      */
-    public function splitCalcCorrectlySplitsExpression($expected, $expression)
+    public function splitCalcCorrectlySplitsExpression(array $expected, string $expression): void
     {
-        $this->assertEquals($expected, GeneralUtility::splitCalc($expression, '+-*/'));
+        $this->assertSame($expected, GeneralUtility::splitCalc($expression, '+-*/'));
     }
 
     ///////////////////////////////
@@ -3670,6 +3672,20 @@ class GeneralUtilityTest extends UnitTestCase
     /**
      * @test
      */
+    public function setSingletonInstanceReturnsFinalClassNameWithOverriddenClass()
+    {
+        $GLOBALS['TYPO3_CONF_VARS']['SYS']['Objects'][SingletonClassFixture::class]['className'] = ExtendedSingletonClassFixture::class;
+        $anotherInstance = new ExtendedSingletonClassFixture();
+        GeneralUtility::makeInstance(SingletonClassFixture::class);
+        GeneralUtility::setSingletonInstance(SingletonClassFixture::class, $anotherInstance);
+        $result = GeneralUtility::makeInstance(SingletonClassFixture::class);
+        self::assertSame($anotherInstance, $result);
+        self::assertEquals(ExtendedSingletonClassFixture::class, get_class($anotherInstance));
+    }
+
+    /**
+     * @test
+     */
     public function resetSingletonInstancesResetsPreviouslySetInstance()
     {
         $instance = $this->createMock(\TYPO3\CMS\Core\SingletonInterface::class);
@@ -4697,7 +4713,15 @@ class GeneralUtilityTest extends UnitTestCase
             'email with utf8 char (german umlaut)' => [
                 'joe.doe@dömäin.de',
                 'joe.doe@xn--dmin-moa0i.de'
-            ]
+            ],
+            'email with utf8 char and @ in local (german umlaut)' => [
+                'joe@doe@dömäin.de',
+                'joe@doe@xn--dmin-moa0i.de'
+            ],
+            'email with utf8 char and @ in local (2) (german umlaut)' => [
+                '"joe@doe"@dömäin.de',
+                '"joe@doe"@xn--dmin-moa0i.de'
+            ],
         ];
     }
 

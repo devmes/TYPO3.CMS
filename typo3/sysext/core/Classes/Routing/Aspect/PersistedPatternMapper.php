@@ -16,11 +16,18 @@ namespace TYPO3\CMS\Core\Routing\Aspect;
  * The TYPO3 project - inspiring people to share!
  */
 
+use Doctrine\DBAL\Connection;
 use TYPO3\CMS\Core\Context\Context;
+use TYPO3\CMS\Core\Context\ContextAwareInterface;
+use TYPO3\CMS\Core\Context\ContextAwareTrait;
 use TYPO3\CMS\Core\Context\LanguageAspectFactory;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\QueryBuilder;
-use TYPO3\CMS\Core\Site\SiteLanguageAwareTrait;
+use TYPO3\CMS\Core\Database\Query\Restriction\FrontendGroupRestriction;
+use TYPO3\CMS\Core\Database\Query\Restriction\FrontendRestrictionContainer;
+use TYPO3\CMS\Core\Routing\Legacy\PersistedPatternMapperLegacyTrait;
+use TYPO3\CMS\Core\Site\SiteAwareInterface;
+use TYPO3\CMS\Core\Site\SiteLanguageAwareInterface;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Frontend\Page\PageRepository;
 
@@ -46,9 +53,13 @@ use TYPO3\CMS\Frontend\Page\PageRepository;
  *
  * @internal might change its options in the future, be aware that there might be modifications.
  */
-class PersistedPatternMapper implements PersistedMappableAspectInterface, StaticMappableAspectInterface
+class PersistedPatternMapper implements PersistedMappableAspectInterface, StaticMappableAspectInterface, ContextAwareInterface, SiteLanguageAwareInterface, SiteAwareInterface
 {
-    use SiteLanguageAwareTrait;
+    use AspectTrait;
+    use SiteLanguageAccessorTrait;
+    use SiteAccessorTrait;
+    use ContextAwareTrait;
+    use PersistedPatternMapperLegacyTrait;
 
     protected const PATTERN_RESULT = '#\{(?P<fieldName>[^}]+)\}#';
 
@@ -78,14 +89,19 @@ class PersistedPatternMapper implements PersistedMappableAspectInterface, Static
     protected $routeFieldResultNames;
 
     /**
-     * @var PersistenceDelegate
+     * @var string|null
      */
-    protected $persistenceDelegate;
+    protected $languageFieldName;
 
     /**
      * @var string|null
      */
     protected $languageParentFieldName;
+
+    /**
+     * @var bool
+     */
+    protected $slugUniqueInSite;
 
     /**
      * @param array $settings
@@ -118,7 +134,9 @@ class PersistedPatternMapper implements PersistedMappableAspectInterface, Static
         $this->routeFieldPattern = $routeFieldPattern;
         $this->routeFieldResult = $routeFieldResult;
         $this->routeFieldResultNames = $routeFieldResultNames['fieldName'] ?? [];
+        $this->languageFieldName = $GLOBALS['TCA'][$this->tableName]['ctrl']['languageField'] ?? null;
         $this->languageParentFieldName = $GLOBALS['TCA'][$this->tableName]['ctrl']['transOrigPointerField'] ?? null;
+        $this->slugUniqueInSite = $this->hasSlugUniqueInSite($this->tableName, ...$this->routeFieldResultNames);
     }
 
     /**
@@ -126,9 +144,7 @@ class PersistedPatternMapper implements PersistedMappableAspectInterface, Static
      */
     public function generate(string $value): ?string
     {
-        $result = $this->getPersistenceDelegate()->generate([
-            'uid' => $value
-        ]);
+        $result = $this->findByIdentifier($value);
         $result = $this->resolveOverlay($result);
         return $this->createRouteResult($result);
     }
@@ -142,7 +158,7 @@ class PersistedPatternMapper implements PersistedMappableAspectInterface, Static
             return null;
         }
         $values = $this->filterNamesKeys($matches);
-        $result = $this->getPersistenceDelegate()->resolve($values);
+        $result = $this->findByRouteFieldValues($values);
         if ($result[$this->languageParentFieldName] ?? null > 0) {
             return (string)$result[$this->languageParentFieldName];
         }
@@ -192,51 +208,67 @@ class PersistedPatternMapper implements PersistedMappableAspectInterface, Static
         );
     }
 
-    /**
-     * @return PersistenceDelegate
-     */
-    protected function getPersistenceDelegate(): PersistenceDelegate
+    protected function findByIdentifier(string $value): ?array
     {
-        if ($this->persistenceDelegate !== null) {
-            return $this->persistenceDelegate;
+        $queryBuilder = $this->createQueryBuilder();
+        $result = $queryBuilder
+            ->select('*')
+            ->where($queryBuilder->expr()->eq(
+                'uid',
+                $queryBuilder->createNamedParameter($value, \PDO::PARAM_INT)
+            ))
+            ->execute()
+            ->fetch();
+        return $result !== false ? $result : null;
+    }
+
+    protected function findByRouteFieldValues(array $values): ?array
+    {
+        $languageAware = $this->languageFieldName !== null && $this->languageParentFieldName !== null;
+
+        $queryBuilder = $this->createQueryBuilder();
+        $results = $queryBuilder
+            ->select('*')
+            ->where(...$this->createRouteFieldConstraints($queryBuilder, $values))
+            ->execute()
+            ->fetchAll();
+        // limit results to be contained in rootPageId of current Site
+        // (which is defining the route configuration currently being processed)
+        if ($this->slugUniqueInSite) {
+            $results = array_values($this->filterContainedInSite($results));
         }
+        // return first result record in case table is not language aware
+        if (!$languageAware) {
+            return $results[0] ?? null;
+        }
+        // post-process language fallbacks
+        $languageIds = $this->resolveAllRelevantLanguageIds();
+        return $this->resolveLanguageFallback($results, $this->languageFieldName, $languageIds);
+    }
+
+    protected function createQueryBuilder(): QueryBuilder
+    {
         $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)
             ->getQueryBuilderForTable($this->tableName)
             ->from($this->tableName);
-        // @todo Restrictions (Hidden? Workspace?)
-
-        $resolveModifier = function (QueryBuilder $queryBuilder, array $values) {
-            return $queryBuilder->select('*')->where(
-                ...$this->createFieldConstraints($queryBuilder, $values, true)
-            );
-        };
-        $generateModifier = function (QueryBuilder $queryBuilder, array $values) {
-            return $queryBuilder->select('*')->where(
-                ...$this->createFieldConstraints($queryBuilder, $values)
-            );
-        };
-
-        return $this->persistenceDelegate = new PersistenceDelegate(
-            $queryBuilder,
-            $resolveModifier,
-            $generateModifier
+        $queryBuilder->setRestrictions(
+            GeneralUtility::makeInstance(FrontendRestrictionContainer::class, $this->context)
         );
+        // Frontend Groups are not available at this time (initialized via TSFE->determineId)
+        // So this must be excluded to allow access restricted records
+        $queryBuilder->getRestrictions()->removeByType(FrontendGroupRestriction::class);
+        return $queryBuilder;
     }
 
     /**
      * @param QueryBuilder $queryBuilder
      * @param array $values
-     * @param bool $resolveExpansion
      * @return array
      */
-    protected function createFieldConstraints(
-        QueryBuilder $queryBuilder,
-        array $values,
-        bool $resolveExpansion = false
-    ): array {
-        $languageExpansion = $this->languageParentFieldName
-            && $resolveExpansion
-            && isset($values['uid']);
+    protected function createRouteFieldConstraints(QueryBuilder $queryBuilder, array $values): array
+    {
+        $languageAware = $this->languageFieldName !== null && $this->languageParentFieldName !== null;
+        $languageExpansion = $languageAware && isset($values['uid']);
 
         $constraints = [];
         foreach ($values as $fieldName => $fieldValue) {
@@ -251,7 +283,7 @@ class PersistedPatternMapper implements PersistedMappableAspectInterface, Static
                 )
             );
         }
-        // If requested, either match uid or language parent field value
+        // either match uid or language parent field value (for any language)
         if ($languageExpansion) {
             $idParameter = $queryBuilder->createNamedParameter(
                 $values['uid'],
@@ -260,6 +292,13 @@ class PersistedPatternMapper implements PersistedMappableAspectInterface, Static
             $constraints[] = $queryBuilder->expr()->orX(
                 $queryBuilder->expr()->eq('uid', $idParameter),
                 $queryBuilder->expr()->eq($this->languageParentFieldName, $idParameter)
+            );
+        // otherwise - basically uid is not in pattern - restrict to languages and apply fallbacks
+        } elseif ($languageAware) {
+            $languageIds = $this->resolveAllRelevantLanguageIds();
+            $constraints[] = $queryBuilder->expr()->in(
+                $this->languageFieldName,
+                $queryBuilder->createNamedParameter($languageIds, Connection::PARAM_INT_ARRAY)
             );
         }
 

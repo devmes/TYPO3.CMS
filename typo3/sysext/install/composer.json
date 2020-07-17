@@ -13,7 +13,7 @@
 		"sort-packages": true
 	},
 	"require": {
-		"nikic/php-parser": "^4.0",
+		"nikic/php-parser": "^4.3.0",
 		"symfony/finder": "^4.1",
 		"typo3/cms-core": "9.5.*@dev",
 		"typo3/cms-extbase": "9.5.*@dev",
@@ -21,9 +21,6 @@
 	},
 	"conflict": {
 		"typo3/cms": "*"
-	},
-	"replace": {
-		"install": "*"
 	},
 	"extra": {
 		"typo3/cms": {

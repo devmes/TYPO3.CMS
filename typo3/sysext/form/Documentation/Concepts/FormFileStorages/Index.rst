@@ -14,7 +14,7 @@ filemount, which is then utilized for storing and reading forms.
 The backend user will only see form definitions that are stored in
 filemounts where the user has at least read access. The ``form editor`` and
 the ``form plugin`` respect those access rights. In this way, you are able
-to implement ACLs. If you have configure more than one filemount and the
+to implement ACLs. If you have configured more than one filemount and the
 backend user is able to access those, the ``form manager`` will allow the
 user to choose the preferred storage in which the form will be saved.
 
@@ -41,13 +41,22 @@ desired upload storage.
    In principle, files in filemounts are publicly accessible. If the
    uploaded files could contain sensitive data, you should suppress any
    HTTP access to the filemount. This may, for example, be achieved by
-   creating a .htaccess file, assuming you are using an Apache web server.
-   The directive of the .htaccess file is fairly easy:
+   creating a :file:`.htaccess` file, assuming you are using an Apache web
+   server. The directive of the :file:`.htaccess` file is fairly easy:
 
-   .. code-block:: html
+   .. code-block:: apache
 
-      Order deny,allow
-      Deny from all
+      # Apache ≥ 2.3
+      <IfModule mod_authz_core.c>
+         Require all denied
+      </IfModule>
+
+      # Apache < 2.3
+      <IfModule !mod_authz_core.c>
+         Order allow,deny
+         Deny from all
+         Satisfy All
+      </IfModule>
 
 The following code block shows you how to configure additional filemounts
 for form definitions.

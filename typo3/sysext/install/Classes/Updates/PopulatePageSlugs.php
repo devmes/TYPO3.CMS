@@ -15,6 +15,7 @@ namespace TYPO3\CMS\Install\Updates;
  * The TYPO3 project - inspiring people to share!
  */
 
+use TYPO3\CMS\Core\Context\Context;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
 use TYPO3\CMS\Core\DataHandling\Model\RecordStateFactory;
@@ -132,10 +133,11 @@ class PopulatePageSlugs implements UpgradeWizardInterface
         if ($this->checkIfTableExists('tx_realurl_pathdata')) {
             $suggestedSlugs = $this->getSuggestedSlugs('tx_realurl_pathdata');
         } elseif ($this->checkIfTableExists('tx_realurl_pathcache')) {
-            $suggestedSlugs = $this->getSuggestedSlugs('tx_realurl_pathcache');
+            $suggestedSlugs = $this->getSuggestedSlugs('tx_realurl_pathcache', 'cache_id');
         }
 
         $fieldConfig = $GLOBALS['TCA'][$this->table]['columns'][$this->fieldName]['config'];
+        $fieldConfig['generatorOptions']['fields'] = ['tx_realurl_pathsegment,title'];
         $evalInfo = !empty($fieldConfig['eval']) ? GeneralUtility::trimExplode(',', $fieldConfig['eval'], true) : [];
         $hasToBeUniqueInSite = in_array('uniqueInSite', $evalInfo, true);
         $hasToBeUniqueInPid = in_array('uniqueInPid', $evalInfo, true);
@@ -214,23 +216,34 @@ class PopulatePageSlugs implements UpgradeWizardInterface
      * Resolve prepared realurl "pagepath" for pages
      *
      * @param string $tableName
+     * @param string $identityField
      * @return array with pageID (default language) and language ID as two-dimensional array containing the page path
      */
-    protected function getSuggestedSlugs(string $tableName): array
+    protected function getSuggestedSlugs(string $tableName, string $identityField = 'uid'): array
     {
+        $context = GeneralUtility::makeInstance(Context::class);
+        $currentTimestamp = $context->getPropertyFromAspect('date', 'timestamp');
+
         $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($tableName);
         $statement = $queryBuilder
             ->select('*')
             ->from($tableName)
             ->where(
-                $queryBuilder->expr()->eq('mpvar', $queryBuilder->createNamedParameter(''))
+                $queryBuilder->expr()->eq('mpvar', $queryBuilder->createNamedParameter('')),
+                $queryBuilder->expr()->orX(
+                    $queryBuilder->expr()->eq('expire', $queryBuilder->createNamedParameter(0)),
+                    $queryBuilder->expr()->gt('expire', $queryBuilder->createNamedParameter($currentTimestamp))
+                )
             )
+            ->orderBy($identityField, 'DESC')
             ->execute();
         $suggestedSlugs = [];
         while ($row = $statement->fetch()) {
             // rawurldecode ensures that non-ASCII arguments are also migrated
             $pagePath = rawurldecode($row['pagepath']);
-            $suggestedSlugs[(int)$row['page_id']][(int)$row['language_id']] = '/' . trim($pagePath, '/');
+            if (!isset($suggestedSlugs[(int)$row['page_id']][(int)$row['language_id']])) { // keep only first result
+                $suggestedSlugs[(int)$row['page_id']][(int)$row['language_id']] = '/' . trim($pagePath, '/');
+            }
         }
         return $suggestedSlugs;
     }

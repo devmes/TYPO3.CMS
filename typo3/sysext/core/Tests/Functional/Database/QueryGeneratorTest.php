@@ -16,7 +16,10 @@ namespace TYPO3\CMS\Core\Tests\Functional\Database;
  * The TYPO3 project - inspiring people to share!
  */
 
+use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\QueryGenerator;
+use TYPO3\CMS\Core\Localization\LanguageService;
+use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
 
 /**
@@ -24,6 +27,13 @@ use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
  */
 class QueryGeneratorTest extends FunctionalTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->setUpBackendUserFromFixture(1);
+        $GLOBALS['LANG'] = new LanguageService();
+    }
+
     /**
      * @test
      */
@@ -253,5 +263,165 @@ class QueryGeneratorTest extends FunctionalTestCase
         $treeList = $queryGenerator->getTreeList($id, $depth, $begin);
 
         static::assertSame('3,5', $treeList);
+    }
+
+    public function getQueryWithIdOrDateDataProvider(): array
+    {
+        return [
+            'pid 5134' => [
+                5134,
+                null,
+                "pid = '5134'",
+            ],
+            'unix timestamp' => [
+                1522863047,
+                null,
+                "pid = '1522863047'",
+            ],
+            'pid 5134 as string' => [
+                '5134',
+                null,
+                "pid = '5134'",
+            ],
+            'unix timestamp as string' => [
+                '1522863047',
+                null,
+                "pid = '1522863047'",
+            ],
+            'ISO 8601 date string' => [
+                '2018-04-04T17:30:47Z',
+                null,
+                "pid = '1522863047'",
+            ],
+            'pid 5134 and second input value 5135' => [
+                5134,
+                5135,
+                'pid >= 5134 AND pid <= 5135',
+                'comparison' => 100,
+            ],
+            'ISO 8601 date string as first and second input' => [
+                '2018-04-04T17:30:47Z',
+                '2018-04-04T17:30:48Z',
+                'pid >= 1522863047 AND pid <= 1522863048',
+                'comparison' => 100,
+            ],
+        ];
+    }
+
+    /**
+     * @test
+     * @dataProvider getQueryWithIdOrDateDataProvider
+     *
+     * @param mixed $inputValue
+     * @param mixed $inputValue1
+     * @param string $expected
+     * @param int $comparison
+     */
+    public function getQueryWithIdOrDate($inputValue, $inputValue1, string $expected, int $comparison = 64)
+    {
+        $GLOBALS['TCA'] = [];
+        $GLOBALS['TCA']['aTable'] = [];
+        $queryGenerator = new QueryGenerator();
+
+        $inputConf = [
+            [
+                'operator' => '',
+                'type' => 'FIELD_pid',
+                'comparison' => $comparison,
+                'inputValue' => $inputValue,
+                'inputValue1' => $inputValue1,
+            ],
+        ];
+
+        $queryGenerator->init('queryConfig', 'aTable');
+        $this->assertSame($expected, trim($queryGenerator->getQuery($inputConf), "\n\r"));
+    }
+
+    public function arbitraryDataIsEscapedDataProvider(): array
+    {
+        $dataSet = [];
+        $injectors = [
+            // INJ'ECT
+            'INJ%quoteCharacter%ECT',
+            // INJ '--
+            // ' ECT
+            'INJ %quoteCharacter%%commentStart% %commentEnd%%quoteCharacter% ECT'
+        ];
+        $comparisons = array_keys((new QueryGenerator())->compSQL);
+        foreach ($injectors as $injector) {
+            foreach ($comparisons as $comparison) {
+                $dataSet[] = [
+                    $injector,
+                    [
+                        'queryTable' => 'tt_content',
+                        'queryFields' => 'uid,' . $injector,
+                        'queryGroup' => $injector,
+                        'queryOrder' => $injector,
+                        'queryLimit' => $injector,
+                        'queryConfig' => serialize([
+                            [
+                                'operator' => $injector,
+                                'type' => 'FIELD_category_field', // falls back to CType (first field)
+                                'comparison' => $comparison,
+                                'inputValue' => $injector,
+
+                            ],
+                            [
+                                'operator' => $injector,
+                                'type' => 'FIELD_category_field',
+                                'comparison' => $comparison,
+                                'inputValue' => $injector,
+
+                            ],
+                        ]),
+                    ],
+                ];
+            }
+        }
+        return $dataSet;
+    }
+
+    /**
+     * @param string $injector
+     * @param array $settings
+     *
+     * @test
+     * @dataProvider arbitraryDataIsEscapedDataProvider
+     * @throws \Doctrine\DBAL\DBALException
+     */
+    public function arbitraryDataIsEscaped(string $injector, array $settings)
+    {
+        $databasePlatform = GeneralUtility::makeInstance(ConnectionPool::class)
+            ->getConnectionForTable('tt_content')->getDatabasePlatform();
+        $replacements = [
+            '%quoteCharacter%' => $databasePlatform->getStringLiteralQuoteCharacter(),
+            '%commentStart%' => $databasePlatform->getSqlCommentStartString(),
+            '%commentEnd%' => $databasePlatform->getSqlCommentEndString()
+        ];
+        $injector = str_replace(array_keys($replacements), $replacements, $injector);
+        $settings = $this->prepareSettings($settings, $replacements);
+
+        $queryGenerator = new QueryGenerator();
+        $queryGenerator->init('queryConfig', $settings['queryTable']);
+        $queryGenerator->makeSelectorTable($settings);
+        $queryGenerator->enablePrefix = true;
+
+        $queryString = $queryGenerator->getQuery($queryGenerator->queryConfig);
+        $query = $queryGenerator->getSelectQuery($queryString);
+
+        self::assertStringNotContainsString($injector, $query);
+    }
+
+    protected function prepareSettings(array $settings, array $replacements): array
+    {
+        foreach ($settings as $settingKey => &$settingValue) {
+            if (is_string($settingValue)) {
+                $settingValue = str_replace(array_keys($replacements), $replacements, $settingValue);
+            }
+            if (is_array($settingValue)) {
+                $settingValue = $this->prepareSettings($settingValue, $replacements);
+            }
+        }
+        return $settings;
     }
 }

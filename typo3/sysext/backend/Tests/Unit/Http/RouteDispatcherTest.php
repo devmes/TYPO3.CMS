@@ -57,6 +57,7 @@ class RouteDispatcherTest extends UnitTestCase
         $routeProphecy = $this->prophesize(Route::class);
         $routerProphecy->matchRequest($requestProphecy->reveal())->willReturn($routeProphecy->reveal());
         $routeProphecy->getOption('access')->willReturn('public');
+        $routeProphecy->getOption('referrer')->willReturn(false);
         $routeProphecy->getOption('module')->willReturn(false);
         $requestProphecy->withAttribute('route', $routeProphecy->reveal())->willReturn($requestProphecy->reveal());
         $requestProphecy->getAttribute('route')->willReturn($routeProphecy->reveal());
@@ -88,14 +89,12 @@ class RouteDispatcherTest extends UnitTestCase
         $routeProphecy = $this->prophesize(Route::class);
         $routerProphecy->matchRequest($requestProphecy->reveal())->willReturn($routeProphecy->reveal());
         $routeProphecy->getOption('access')->willReturn('public');
+        $routeProphecy->getOption('referrer')->willReturn(false);
         $routeProphecy->getOption('module')->willReturn(false);
         $requestProphecy->withAttribute('route', $routeProphecy->reveal())->willReturn($requestProphecy->reveal());
         $requestProphecy->getAttribute('route')->willReturn($routeProphecy->reveal());
 
-        $target = [
-            RouteDispatcherClassFixture::class,
-            'mainAction'
-        ];
+        $target = RouteDispatcherClassFixture::class . '::mainAction';
         $routeProphecy->getOption('target')->willReturn($target);
         $requestProphecy->withAttribute('target', $target)->willReturn($requestProphecy->reveal());
 
@@ -122,15 +121,16 @@ class RouteDispatcherTest extends UnitTestCase
         $routeProphecy = $this->prophesize(Route::class);
         $routerProphecy->matchRequest($requestProphecy->reveal())->willReturn($routeProphecy->reveal());
         $routeProphecy->getOption('access')->willReturn('public');
+        $routeProphecy->getOption('referrer')->willReturn(false);
         $routeProphecy->getOption('module')->willReturn(false);
         $requestProphecy->withAttribute('route', $routeProphecy->reveal())->willReturn($requestProphecy->reveal());
         $requestProphecy->getAttribute('route')->willReturn($routeProphecy->reveal());
 
-        $target = function (ServerRequestInterface $request) {
+        $target = static function (ServerRequestInterface $request) {
             throw new \RuntimeException('I have been called. Good!', 1520756466);
         };
         $routeProphecy->getOption('target')->willReturn($target);
-        $requestProphecy->withAttribute('target', $target)->willReturn($requestProphecy->reveal());
+        $requestProphecy->withAttribute('target', Argument::type(\Closure::class))->willReturn($requestProphecy->reveal());
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionCode(1520756466);
@@ -155,6 +155,7 @@ class RouteDispatcherTest extends UnitTestCase
         $routeProphecy = $this->prophesize(Route::class);
         $routerProphecy->matchRequest($requestProphecy->reveal())->willReturn($routeProphecy->reveal());
         $routeProphecy->getOption('access')->willReturn('public');
+        $routeProphecy->getOption('referrer')->willReturn(false);
         $routeProphecy->getOption('module')->willReturn(false);
         $requestProphecy->withAttribute('route', $routeProphecy->reveal())->willReturn($requestProphecy->reveal());
         $requestProphecy->getAttribute('route')->willReturn($routeProphecy->reveal());
@@ -186,6 +187,7 @@ class RouteDispatcherTest extends UnitTestCase
         $routeProphecy = $this->prophesize(Route::class);
         $routerProphecy->matchRequest($requestProphecy->reveal())->willReturn($routeProphecy->reveal());
         $routeProphecy->getOption('access')->willReturn('public');
+        $routeProphecy->getOption('referrer')->willReturn(false);
         $routeProphecy->getOption('module')->willReturn(false);
         $requestProphecy->withAttribute('route', $routeProphecy->reveal())->willReturn($requestProphecy->reveal());
         $requestProphecy->getAttribute('route')->willReturn($routeProphecy->reveal());
@@ -217,6 +219,7 @@ class RouteDispatcherTest extends UnitTestCase
         $routeProphecy = $this->prophesize(Route::class);
         $routerProphecy->matchRequest($requestProphecy->reveal())->willReturn($routeProphecy->reveal());
         $routeProphecy->getOption('access')->willReturn('public');
+        $routeProphecy->getOption('referrer')->willReturn(false);
         $routeProphecy->getOption('module')->willReturn(false);
         $requestProphecy->withAttribute('route', $routeProphecy->reveal())->willReturn($requestProphecy->reveal());
         $requestProphecy->getAttribute('route')->willReturn($routeProphecy->reveal());
@@ -248,6 +251,7 @@ class RouteDispatcherTest extends UnitTestCase
         $routeProphecy = $this->prophesize(Route::class);
         $routerProphecy->matchRequest($requestProphecy->reveal())->willReturn($routeProphecy->reveal());
         $routeProphecy->getOption('access')->willReturn('public');
+        $routeProphecy->getOption('referrer')->willReturn(false);
         $routeProphecy->getOption('module')->willReturn(false);
         $requestProphecy->withAttribute('route', $routeProphecy->reveal())->willReturn($requestProphecy->reveal());
         $requestProphecy->getAttribute('route')->willReturn($routeProphecy->reveal());

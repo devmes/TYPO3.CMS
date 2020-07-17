@@ -21,8 +21,9 @@ define([
   'TYPO3/CMS/Install/ProgressBar',
   'TYPO3/CMS/Install/InfoBox',
   'TYPO3/CMS/Install/Severity',
+  'TYPO3/CMS/Core/SecurityUtility',
   'bootstrap'
-], function($, Router, FlashMessage, ProgressBar, InfoBox, Severity) {
+], function($, Router, FlashMessage, ProgressBar, InfoBox, Severity, SecurityUtility) {
   'use strict';
 
   return {
@@ -38,7 +39,6 @@ define([
     selectorDeactivateLanguageIcon: '#t3js-languagePacks-deactivate-icon',
     selectorUpdate: '.t3js-languagePacks-update',
     selectorLanguageUpdateIcon: '#t3js-languagePacks-languageUpdate-icon',
-    selectorExtensionPackMissesIcon: '#t3js-languagePacks-extensionPack-misses-icon',
     selectorNotifications: '.t3js-languagePacks-notifications',
 
     currentModal: {},
@@ -227,9 +227,10 @@ define([
             'aria-valuemax': 100,
             'style': 'width: 0;'
           }).append(
-            $('<span>', {'class': 'text-nowrap'}).text('0 of ' + this.packsUpdateDetails.toHandle + ' language packs updated')
+            $('<span>', {'class': 'text-nowrap'}).text('0 of ' + this.packsUpdateDetails.toHandle + ' language ' +
+              this.pluralize(this.packsUpdateDetails.toHandle) + ' updated')
           )
-      ));
+        ));
       $contentContainer.empty();
 
       isos.forEach(function(iso) {
@@ -277,6 +278,13 @@ define([
       });
     },
 
+    pluralize: function(count, word, suffix, additionalCount) {
+      word = word || 'pack';
+      suffix = suffix || 's';
+      additionalCount = additionalCount || 0;
+      return count !== 1 && additionalCount !== 1 ? word + suffix : word;
+    },
+
     packUpdateDone: function(updateIsoTimes, isos) {
       var self = this;
       var modalContent = this.currentModal.find(this.selectorModalBody);
@@ -286,9 +294,9 @@ define([
         var message = InfoBox.render(
           Severity.ok,
           'Language packs updated',
-          this.packsUpdateDetails.new + ' new language packs downloaded, ' +
-          this.packsUpdateDetails.updated + ' language packs updated, ' +
-          this.packsUpdateDetails.failed + ' language packs not available'
+          this.packsUpdateDetails.new + ' new language ' + this.pluralize(this.packsUpdateDetails.new) + ' downloaded, ' +
+          this.packsUpdateDetails.updated + ' language ' + this.pluralize(this.packsUpdateDetails.updated) + ' updated, ' +
+          this.packsUpdateDetails.failed + ' language ' + this.pluralize(this.packsUpdateDetails.failed) + ' not available'
         );
         this.addNotification(message);
         if (updateIsoTimes === true) {
@@ -326,7 +334,8 @@ define([
           .css('width', percent + '%')
           .attr('aria-valuenow', percent)
           .find('span')
-          .text(this.packsUpdateDetails.handled + ' of ' + this.packsUpdateDetails.toHandle + ' language packs updated');
+          .text(this.packsUpdateDetails.handled + ' of ' + this.packsUpdateDetails.toHandle + ' language ' +
+            this.pluralize(this.packsUpdateDetails.handled, 'pack', 's', this.packsUpdateDetails.toHandle) + ' updated');
       }
     },
 
@@ -391,7 +400,7 @@ define([
                   $('<span>').append(activateIcon),
                   ' Add language'
                 ),
-                $('<button>', {'class': 'btn btn-default t3js-languagePacks-update', 'type': 'button'}).append(
+                $('<button>', {'class': 'btn btn-default disabled update-all t3js-languagePacks-update', 'type': 'button', 'disabled': 'disabled'}).append(
                   $('<span>').append(updateIcon),
                   ' Update all'
                 )
@@ -405,15 +414,18 @@ define([
           $tbody
         )
       );
+
+      if (Array.isArray(this.activeLanguages) && this.activeLanguages.length) {
+        $markupContainer.find('.update-all').removeClass('disabled').removeAttr('disabled');
+      }
       return $markupContainer.html();
     },
 
     extensionMatrixHtml: function(data) {
-      var packMissesIcon = this.currentModal.find(this.selectorExtensionPackMissesIcon).html();
+      var securityUtility = new SecurityUtility();
       var updateIcon = this.currentModal.find(this.selectorLanguageUpdateIcon).html();
       var tooltip = '';
       var extensionTitle = '';
-      var allPackagesExist = true;
       var rowCount = 0;
       var $markupContainer = $('<div>');
 
@@ -440,24 +452,15 @@ define([
 
       var $tbody = $('<tbody>');
       data.extensions.forEach(function(extension) {
-        allPackagesExist = true;
-        extension.packs.forEach(function(pack) {
-          if (pack.exists === false) {
-            allPackagesExist = false;
-          }
-        });
-        if (allPackagesExist === true) {
-          return;
-        }
         rowCount++;
-        if (extension.icon !== '') {
+        if (typeof extension.icon !== 'undefined') {
           extensionTitle = $('<span>').append(
             $('<img>', {
               'style': 'max-height: 16px; max-width: 16px;',
               'src': '../' + extension.icon,
               'alt': extension.title
             }),
-            $('<span>').text(extension.title)
+            $('<span>').text(' ' + extension.title)
           );
         } else {
           extensionTitle = $('<span>').text(extension.title)
@@ -468,24 +471,30 @@ define([
           $('<td>').text(extension.key)
         );
         extension.packs.forEach(function(pack) {
+          var $column = $('<td>');
+          $tr.append($column);
           if (pack.exists !== true) {
             if (pack.lastUpdate !== null) {
-              tooltip = 'No language pack available when tried at ' + pack.lastUpdate + '. Click to re-try.';
+              tooltip = 'No language pack available for ' + pack.iso + ' when tried at ' + pack.lastUpdate + '. Click to re-try.';
             } else {
               tooltip = 'Language pack not downloaded. Click to download';
             }
-            $tr.append(
-              $('<td>').append(
-                $('<a>', {
-                  'class': 'btn btn-default t3js-languagePacks-update',
-                  'data-extension': extension.key,
-                  'data-iso': pack.iso,
-                  'data-toggle': 'tooltip',
-                  'title': tooltip
-                }).append(packMissesIcon)
-              )
-            );
+          } else {
+            if (pack.lastUpdate === null) {
+              tooltip = 'Downloaded. Click to renew';
+            } else {
+              tooltip = 'Language pack downloaded at ' + pack.lastUpdate + '. Click to renew';
+            }
           }
+          $column.append(
+            $('<a>', {
+              'class': 'btn btn-default t3js-languagePacks-update',
+              'data-extension': extension.key,
+              'data-iso': pack.iso,
+              'data-toggle': 'tooltip',
+              'title': securityUtility.encodeHtml(tooltip),
+            }).append(updateIcon)
+          );
         });
         $tbody.append($tr);
       });

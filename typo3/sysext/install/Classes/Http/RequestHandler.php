@@ -19,6 +19,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface as PsrRequestHandlerInterface;
 use TYPO3\CMS\Core\Configuration\ConfigurationManager;
+use TYPO3\CMS\Core\Configuration\Features;
 use TYPO3\CMS\Core\Core\Environment;
 use TYPO3\CMS\Core\Crypto\PasswordHashing\PasswordHashFactory;
 use TYPO3\CMS\Core\FormProtection\FormProtectionFactory;
@@ -26,6 +27,7 @@ use TYPO3\CMS\Core\FormProtection\InstallToolFormProtection;
 use TYPO3\CMS\Core\Http\HtmlResponse;
 use TYPO3\CMS\Core\Http\JsonResponse;
 use TYPO3\CMS\Core\Http\RequestHandlerInterface;
+use TYPO3\CMS\Core\Http\Security\ReferrerEnforcer;
 use TYPO3\CMS\Core\Messaging\FlashMessage;
 use TYPO3\CMS\Core\Messaging\FlashMessageQueue;
 use TYPO3\CMS\Core\Package\PackageInterface;
@@ -97,10 +99,20 @@ class RequestHandler implements RequestHandlerInterface, PsrRequestHandlerInterf
     {
         $controllerName = $request->getQueryParams()['install']['controller'] ?? 'layout';
         $actionName = $request->getParsedBody()['install']['action'] ?? $request->getQueryParams()['install']['action'] ?? 'init';
+
+        if ($actionName === 'showEnableInstallToolFile' && EnableFileService::isInstallToolEnableFilePermanent()) {
+            $actionName = 'showLogin';
+        }
+
         $action = $actionName . 'Action';
 
         $session = $this->initializeSession();
-        if ($actionName === 'init') {
+        if ($actionName === 'preAccessCheck') {
+            $response = new JsonResponse([
+                'installToolLocked' => !$this->checkEnableInstallToolFile(),
+                'isAuthorized' => $session->isAuthorized()
+            ]);
+        } elseif ($actionName === 'init') {
             $controller = new LayoutController();
             $response = $controller->initAction($request);
         } elseif ($actionName === 'checkEnableInstallToolFile') {
@@ -179,6 +191,10 @@ class RequestHandler implements RequestHandlerInterface, PsrRequestHandlerInterf
                 'success' => true,
             ]);
         } else {
+            $enforceReferrerResponse = $this->enforceReferrer($request);
+            if ($enforceReferrerResponse instanceof ResponseInterface) {
+                return $enforceReferrerResponse;
+            }
             if (
                 !$this->checkSessionToken($request, $session)
                 || !$this->checkSessionLifetime($session)
@@ -349,5 +365,24 @@ class RequestHandler implements RequestHandlerInterface, PsrRequestHandlerInterf
             }
             $packageManager->forceSortAndSavePackageStates();
         }
+    }
+
+    /**
+     * Evaluates HTTP `Referer` header (which is denied by client to be a custom
+     * value) - attempts to ensure the value is given using a HTML client refresh.
+     * see: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referer
+     *
+     * @param ServerRequestInterface $request
+     * @return ResponseInterface|null
+     */
+    protected function enforceReferrer(ServerRequestInterface $request): ?ResponseInterface
+    {
+        if (!(new Features())->isFeatureEnabled('security.backend.enforceReferrer')) {
+            return null;
+        }
+        return (new ReferrerEnforcer($request))->handle([
+            'flags' => ['refresh-always'],
+            'subject' => 'Install Tool',
+        ]);
     }
 }

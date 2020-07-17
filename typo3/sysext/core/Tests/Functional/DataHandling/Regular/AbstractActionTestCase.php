@@ -86,7 +86,15 @@ abstract class AbstractActionTestCase extends \TYPO3\CMS\Core\Tests\Functional\D
     }
 
     /**
-     * @see DataSet/deleteContentRecord.csv
+     * See DataSet/hideContent.csv
+     */
+    public function hideContent()
+    {
+        $this->actionService->modifyRecord(self::TABLE_Content, self::VALUE_ContentIdSecond, ['hidden' => '1']);
+    }
+
+    /**
+     * See DataSet/deleteContentRecord.csv
      */
     public function deleteContent()
     {
@@ -168,6 +176,38 @@ abstract class AbstractActionTestCase extends \TYPO3\CMS\Core\Tests\Functional\D
     {
         $localizedTableIds = $this->actionService->localizeRecord(self::TABLE_Content, self::VALUE_ContentIdSecond, self::VALUE_LanguageId);
         $this->recordIds['localizedContentId'] = $localizedTableIds[self::TABLE_Content][self::VALUE_ContentIdSecond];
+    }
+
+    /**
+     * See DataSet/localizeContentWHideAtCopy.csv
+     */
+    public function localizeContentWithHideAtCopy()
+    {
+        $GLOBALS['TCA'][self::TABLE_Content]['ctrl']['hideAtCopy'] = true;
+        self::localizeContent();
+        $this->actionService->modifyRecord(self::TABLE_Content, $this->recordIds['localizedContentId'], ['hidden' => 0]);
+    }
+
+    /**
+     * @see DataSet/localizeContentRecord.csv
+     * @see \TYPO3\CMS\Core\Migrations\TcaMigration::sanitizeControlSectionIntegrity()
+     */
+    public function localizeContentWithEmptyTcaIntegrityColumns()
+    {
+        $integrityFieldNames = [
+            'origin' => $GLOBALS['TCA'][self::TABLE_Content]['ctrl']['origUid'] ?? null,
+            'language' => $GLOBALS['TCA'][self::TABLE_Content]['ctrl']['languageField'] ?? null,
+            'languageParent' => $GLOBALS['TCA'][self::TABLE_Content]['ctrl']['transOrigPointerField'] ?? null,
+            'languageSource' => $GLOBALS['TCA'][self::TABLE_Content]['ctrl']['translationSource'] ?? null,
+        ];
+        // explicitly unset integrity columns in TCA
+        foreach ($integrityFieldNames as $integrityFieldName) {
+            unset($GLOBALS['TCA'][self::TABLE_Content]['columns'][$integrityFieldName]);
+        }
+        // explicitly call TcaMigration (which was executed already earlier in functional testing bootstrap)
+        $GLOBALS['TCA'] = (new \TYPO3\CMS\Core\Migrations\TcaMigration())->migrate($GLOBALS['TCA']);
+        // perform actions to be tested
+        self::localizeContent();
     }
 
     public function localizeContentWithLanguageSynchronization()
@@ -273,6 +313,14 @@ abstract class AbstractActionTestCase extends \TYPO3\CMS\Core\Tests\Functional\D
     }
 
     /**
+     * See DataSet/moveContentRecordToDifferentPageAndHide.csv
+     */
+    public function moveContentToDifferentPageAndHide()
+    {
+        $this->actionService->moveRecord(self::TABLE_Content, self::VALUE_ContentIdSecond, self::VALUE_PageIdTarget, ['hidden' => '1']);
+    }
+
+    /**
      * Page records
      */
 
@@ -281,7 +329,7 @@ abstract class AbstractActionTestCase extends \TYPO3\CMS\Core\Tests\Functional\D
      */
     public function createPage()
     {
-        $newTableIds = $this->actionService->createNewRecord(self::TABLE_Page, self::VALUE_PageId, ['title' => 'Testing #1', 'hidden' => 0]);
+        $newTableIds = $this->actionService->createNewRecord(self::TABLE_Page, self::VALUE_PageId, ['title' => 'Testing #1', 'hidden' => 0, 'nav_title' => 'Nav Testing #1']);
         $this->recordIds['newPageId'] = $newTableIds[self::TABLE_Page][0];
     }
 
@@ -326,9 +374,6 @@ abstract class AbstractActionTestCase extends \TYPO3\CMS\Core\Tests\Functional\D
      */
     public function localizePage()
     {
-        // in these test cases we expect new pages not to be hidden in order to
-        // verify proper overlaying behavior during the frontend render process
-        $GLOBALS['TCA'][self::TABLE_Page]['columns']['hidden']['config']['default'] = 0;
         $localizedTableIds = $this->actionService->localizeRecord(self::TABLE_Page, self::VALUE_PageId, self::VALUE_LanguageId);
         $this->recordIds['localizedPageId'] = $localizedTableIds[self::TABLE_Page][self::VALUE_PageId];
     }
@@ -337,9 +382,6 @@ abstract class AbstractActionTestCase extends \TYPO3\CMS\Core\Tests\Functional\D
     {
         unset($GLOBALS['TCA'][self::TABLE_Page]['columns']['title']['l10n_mode']);
         $GLOBALS['TCA'][self::TABLE_Page]['columns']['title']['config']['behaviour']['allowLanguageSynchronization'] = true;
-        // in these test cases we expect new pages not to be hidden in order to
-        // verify proper overlaying behavior during the frontend render process
-        $GLOBALS['TCA'][self::TABLE_Page]['columns']['hidden']['config']['default'] = 0;
         $localizedTableIds = $this->actionService->localizeRecord(self::TABLE_Page, self::VALUE_PageId, self::VALUE_LanguageId);
         $this->recordIds['localizedPageId'] = $localizedTableIds[self::TABLE_Page][self::VALUE_PageId];
         $this->actionService->modifyRecord(self::TABLE_Page, self::VALUE_PageId, ['title' => 'Testing #1']);

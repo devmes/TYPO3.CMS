@@ -14,14 +14,14 @@ namespace TYPO3\CMS\Fluid\ViewHelpers\Format;
  * The TYPO3 project - inspiring people to share!
  */
 
-use TYPO3\CMS\Fluid\Core\ViewHelper\Exception\InvalidVariableException;
+use TYPO3Fluid\Fluid\Core\Exception;
 use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
 use TYPO3Fluid\Fluid\Core\ViewHelper\AbstractViewHelper;
 use TYPO3Fluid\Fluid\Core\ViewHelper\Traits\CompileWithRenderStatic;
 
 /**
  * Modifies the case of an input string to upper- or lowercase or capitalization.
- * The default transformation will be uppercase as in ``mb_convert_case`` [1].
+ * The default transformation will be uppercase as in `mb_convert_case`_.
  *
  * Possible modes are:
  *
@@ -40,25 +40,35 @@ use TYPO3Fluid\Fluid\Core\ViewHelper\Traits\CompileWithRenderStatic;
  * ``capitalWords``
  *   Not supported yet: Transforms the input string to each containing word being capitalized
  *
- * Note that the behavior will be the same as in the appropriate PHP function ``mb_convert_case`` [1];
+ * Note that the behavior will be the same as in the appropriate PHP function `mb_convert_case`_;
  * especially regarding locale and multibyte behavior.
  *
- * @see http://php.net/manual/function.mb-convert-case.php [1]
+ * .. _mb_convert_case: https://www.php.net/manual/function.mb-convert-case.php
  *
  * Examples
- * --------
+ * ========
  *
- * Example::
+ * Default
+ * -------
+ *
+ * ::
  *
  *    <f:format.case>Some Text with miXed case</f:format.case>
  *
- * SOME TEXT WITH MIXED CASE
+ * Output::
  *
- * Example with given mode::
+ *    SOME TEXT WITH MIXED CASE
+ *
+ * Example with given mode
+ * -----------------------
+ *
+ * ::
  *
  *    <f:format.case mode="capital">someString</f:format.case>
  *
- * SomeString
+ * Output::
+ *
+ *    SomeString
  */
 class CaseViewHelper extends AbstractViewHelper
 {
@@ -112,7 +122,7 @@ class CaseViewHelper extends AbstractViewHelper
      * @param \Closure $renderChildrenClosure
      * @param RenderingContextInterface $renderingContext
      * @return string
-     * @throws InvalidVariableException
+     * @throws Exception
      */
     public static function renderStatic(array $arguments, \Closure $renderChildrenClosure, RenderingContextInterface $renderingContext)
     {
@@ -146,7 +156,7 @@ class CaseViewHelper extends AbstractViewHelper
                 $output = mb_convert_case($value, MB_CASE_TITLE, 'utf-8');
                 break;
             default:
-                throw new InvalidVariableException('The case mode "' . $mode . '" supplied to Fluid\'s format.case ViewHelper is not supported.', 1358349150);
+                throw new Exception('The case mode "' . $mode . '" supplied to Fluid\'s format.case ViewHelper is not supported.', 1358349150);
         }
 
         return $output;
