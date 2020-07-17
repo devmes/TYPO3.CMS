@@ -1331,7 +1331,7 @@ class PageRepository implements LoggerAwareInterface
                 ->removeAll()
                 ->add(GeneralUtility::makeInstance(DeletedRestriction::class));
 
-            $pageRec = $queryBuilder->select('uid', 'pid', 'doktype', 'mount_pid', 'mount_pid_ol', 't3ver_state')
+            $pageRec = $queryBuilder->select('uid', 'pid', 'doktype', 'mount_pid', 'mount_pid_ol', 't3ver_state', 'l10n_parent')
                 ->from('pages')
                 ->where(
                     $queryBuilder->expr()->eq(
@@ -1352,7 +1352,7 @@ class PageRepository implements LoggerAwareInterface
         }
         // Set first Page uid:
         if (!$firstPageUid) {
-            $firstPageUid = $pageRec['uid'];
+            $firstPageUid = $pageRec['l10n_parent'] ? $pageRec['l10n_parent'] : $pageRec['uid'];
         }
         // Look for mount pid value plus other required circumstances:
         $mount_pid = (int)$pageRec['mount_pid'];
@@ -1363,7 +1363,7 @@ class PageRepository implements LoggerAwareInterface
                 ->removeAll()
                 ->add(GeneralUtility::makeInstance(DeletedRestriction::class));
 
-            $mountRec = $queryBuilder->select('uid', 'pid', 'doktype', 'mount_pid', 'mount_pid_ol', 't3ver_state')
+            $mountRec = $queryBuilder->select('uid', 'pid', 'doktype', 'mount_pid', 'mount_pid_ol', 't3ver_state', 'l10n_parent')
                 ->from('pages')
                 ->where(
                     $queryBuilder->expr()->eq(
